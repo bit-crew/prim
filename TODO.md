@@ -1,0 +1,236 @@
+# Kestrel — TODO
+
+Generalist operating framework. Manages personal life, projects, and companies.
+Automates the tedious: accounting, emails, files, repetitive tasks, tax filings.
+
+---
+
+## Scope
+
+Kestrel serves for:
+- **Personal life** — emails, files, reminders, tedious tasks
+- **Own projects** — management once they generate revenue
+- **Companies** — reusable operating model (any instance)
+
+It is not only financial. It is the operating system of your productive life.
+
+---
+
+## Completed
+
+- [x] `docs/fiscal/guia-tributaria-sas.md` — Colombia tax rules for any SAS
+- [x] `docs/ops/principios-operativos.md` — Minimalism, technological governance, ROE, debt, quality
+- [x] `docs/governance/votaciones-documentos.md` — Voting and legal documents pattern (REVIEW PENDING)
+- [x] Instance cleanup — references to kestrel instead of duplicated content
+- [x] Access model decided — YubiKey/SSH on the VPS (see GOVERNANCE.md / stack-selection.md)
+- [x] Transactional DB + queue decided — Turso + native CDC (see stack-selection.md)
+
+---
+
+## Architecture
+
+### Fundamental separation
+
+```
+kestrel/                          (this repo)
+├── Operating model             → Rules (docs: fiscal, ops, governance)
+├── Channel integration         → Employee interface (Mattermost + agent)
+└── config.yaml                 → Defines the instance (DB, storage, repos)
+
+dev-setup/                        (separate repo, NOT kestrel)
+└── Nix + dotfiles + technical access (direct DB, CLI, cloud infra)
+```
+
+The channel is the same for everyone. The dev environment is a separate concern of the developer.
+
+### Employee interface — the channel (decided)
+
+The primary employee interface is the **channel** (Slack / Mattermost — not finally decided),
+not a web portal. Per GOVERNANCE.md: employees interact in the channel and with the agent; there is **no portal** as the source of truth.
+
+| Capability | Detail | Backend-first |
+|---|---|---|
+| **Projects** | Separation per project, each with its resources | Yes |
+| **Chat** | Per-project messaging with threads | Yes |
+| **Video calls** | Integrated or linked from the calendar | Yes |
+| **Calendar** | Summons, events, reminders, deadlines | Yes |
+| **Tickets** | As simple as possible (title + status + assignee) | Yes |
+| **Brief documentation** | Inline editing, no endless docs | Yes |
+| **Agent** | Brings you up to date, answers questions, queries the project RAG | Yes |
+| **Files** | Synced with R2 (persistent) or Git as appropriate | Yes |
+| **Repos/Resources** | Links to repos, Cloudflare, infra — visible by role | Yes |
+| **RBAC** | Everything filtered by roles per project | Yes |
+
+> **Data-viewing/editing (non-technical users):** open question, not a portal. Candidate: static app on Cloudflare Pages + DuckDB-WASM + Worker/R2, opened from the channel. See stack-selection.md.
+
+### Storage
+
+```
+Persistent (source of truth):
+├── Project R2            → project documents and files
+├── Collaborator R2       → agent's personal memory
+├── Git                   → statutes, code, DaC
+└── TDS (OLTP)            → transactional state
+
+Temporary (not persisted):
+└── User's local PC       → drafts, working files that need not persist
+```
+
+The channel/apps sync with R2/Git. The user may keep temporary local files they do not upload.
+
+### config.yaml (draft)
+
+```yaml
+instance:
+  name: <project_name>
+  repo_code: <GOP>/<org>/<project_name>.git   # code host (technical staff)
+  db: <tds-dsn>                                # TDS/OLTP, engine in stack-selection.md
+  storage: s3://...                            # R2 compatible
+agent:
+  type: oas   # Operational Assistant. Stack: docs/ops/stack-selection.md
+  steering: <GOP>/<org>/agent.git
+access:
+  identity: yubikey-ssh   # person auth on the VPS, not IdP/email
+```
+
+No `profile` or `environment` field. Kestrel defines the instance, not the developer's environment.
+
+### Boundaries between projects
+
+| Project | Responsibility |
+|----------|----------------|
+| kestrel/ | Operating model + instance config + channel/agent integration |
+| dev-setup/ | Personal technical environment (Nix, dotfiles). NOT part of kestrel |
+| agent/ | Steering for LLMs. Cloned by dev-setup |
+| `<project_name>/` | Specific instance: statutes, investment policy, OLTP |
+
+### Open questions
+
+- [ ] R2 (Cloudflare, free egress) or S3 for storage?
+- [ ] Data-viewing/editing layer for non-technical users (see stack-selection.md open decisions)
+- [ ] Video call: Jitsi integration, native, or external link?
+- [ ] Does the agent run in a backend or as a separate service?
+
+---
+
+## Agent architecture (OAS - Operational Assistant)
+
+Local agent on each machine with per-user memory in R2 and a shared RAG.
+
+### Knowledge layers
+
+| Layer | What it contains | Where it lives | Access |
+|------|-------------|------------|--------|
+| Per-user memory | Individual history, context, preferences | Engram → R2 (by user_id) | User only |
+| Shared RAG | Company docs + data + conversations | Centralized | Everyone equally |
+
+### Shared RAG (sources)
+
+```
+┌─────────────────────────────────────────┐
+│  Shared RAG                             │
+│                                         │
+│  - kestrel/ (operating model)           │
+│  - <project_name>/ (statutes, rules)    │
+│  - TDS/OLTP (financial data)            │
+│  - Channel history (conversations)      │
+└─────────────────────────────────────────┘
+```
+
+The channel history is part of the RAG. The agent needs to read everything said in the project channels to answer with full context.
+
+### Response flow
+
+```
+Employee asks in the channel
+        │
+        ▼
+┌───────────────────────────────────┐
+│  Agent (OAS)                      │
+│                                   │
+│  1. Identify user                 │
+│  2. Load individual memory (R2)   │
+│  3. Search the shared RAG:        │
+│     - Docs (kestrel + <project_name>) │
+│     - DB (TDS/OLTP)               │
+│     - Channel history (project)   │
+│  4. Generate response             │
+│  5. Save to the user's memory     │
+└───────────────────────────────────┘
+```
+
+### Deployment
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Machine 1  │     │  Machine 2  │     │  Machine N  │
+│  (VPS/PC)   │     │  (tablet)   │     │  (client)   │
+│  OAS agent  │     │  OAS agent  │     │  OAS agent  │
+│ (ZeroClaw/  │     │ (ZeroClaw/  │     │ (ZeroClaw/  │
+│  nanobot)   │     │  nanobot)   │     │  nanobot)   │
+└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+       │                   │                   │
+       └───────────────────┼───────────────────┘
+                           ▼
+              ┌──────────────────────┐
+              │  R2 (Cloudflare)     │
+              │                      │
+              │  /users/{id}/memory  │  ← Per-user memory
+              │  /rag/               │  ← Indexed shared RAG
+              └──────────────────────┘
+```
+
+### Principles
+
+- No 24/7 centralized service (packages > services, except the channel which is the central interface)
+- Each machine has a local agent (no extra latency)
+- Per-user memory: isolated individual context
+- Shared RAG: same knowledge base for everyone
+- Channel history as a RAG source
+- Cloudflare R2: free egress, S3-API compatible
+- The channel replaces email (zero emails)
+
+### Communication channel
+
+The channel replaces email. It is the single interaction interface (people + agent).
+
+Requirements:
+- Channels/topics (separate company from personal, project A from B)
+- Threads (do not mix conversations)
+- Organized, searchable files (so they are not lost)
+- Video and voice calls
+- Calendar (events, reminders, deadlines)
+- API for a bot (the agent lives there)
+- Full history (RAG source)
+- Self-hosted or own data (single source of truth)
+
+Agent integration:
+- Agent reads the full history of the project channels (RAG)
+- Webhook triggers the agent when someone asks
+- The agent answers in the same channel
+- If the VPS has no fixed IP: Cloudflare Worker as a public proxy
+- If the VPS has a fixed IP: direct webhook
+
+---
+
+## Desired capabilities (no order or priority yet)
+
+- Automate income-tax filing and accounting
+- Auto-categorize expenses/income
+- Answer tedious emails or generate drafts
+- Avoid losing files (organization, search)
+- Repetitive task management (minimalist, no heavy apps)
+- Operating model for companies (reusable)
+- Knowledge base so an assistant (OAS) helps employees
+- Personal management: reminders, documents, paperwork
+
+---
+
+## Pending decisions
+
+- [ ] What kestrel does vs what agent/ does (technical steering)
+- [ ] What kestrel does vs what dev-setup/ does (infra/environment)
+- [ ] What lives in kestrel vs what lives in an instance (company, personal life)
+- [ ] Final form: Python package, knowledge base, both, something else
+- [ ] Review the voting pattern (kestrel/docs/governance/)
+- [ ] Instance OLTP: stays as is (specific to asset protection)

@@ -1,0 +1,78 @@
+# Backend configuration for GitLab
+# You will need to create an OAuth application in your GitLab account to get the app_id.
+# The repo should be in the format: your-gitlab-username/your-repo-name
+backend:
+  name: gitlab
+  repo: "" # REQUIRED: user-name/repo-name
+  branch: main
+  auth_type: pkce
+  app_id: "" # REQUIRED: Your GitLab application ID
+
+# This is the folder where media files (like images) will be stored.
+media_folder: "documentos/media"
+public_folder: "/media"
+
+# Defines the different types of content (documents) you can create and edit.
+collections:
+  - name: "legal_statute"
+    label: "Estatuto Legal"
+    folder: "documentos/estatutos"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body", name: "body", widget: "markdown" }
+
+  - name: "security_policy"
+    label: "Política de Seguridad"
+    folder: "documentos/politicas_seguridad"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body", name: "body", widget: "markdown" }
+
+  - name: "architectural_principle"
+    label: "Principio Arquitectónico"
+    folder: "documentos/principios_arquitectura"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body", name: "body", widget: "markdown" }
+
+  - name: "operational_runbook"
+    label: "Runbook Operacional"
+    folder: "documentos/runbooks"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body", name: "body", widget: "markdown" }
+
+  - name: "post_mortem"
+    label: "Post Mortem"
+    folder: "documentos/post_mortems"
+    create: true
+    slug: "{{slug}}"
+    extension: "yaml"
+    format: "yaml"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Date", name: "date", widget: "datetime" }
+      - { label: "Summary", name: "summary", widget: "text" }
+      - { label: "Impact", name: "impact", widget: "string"}
+      - { label: "Root Cause", name: "root_cause", widget: "markdown"}
+      - { label: "Timeline", name: "timeline", widget: "markdown"}
+      - { label: "Resolution", name: "resolution", widget: "markdown"}
+
+  - name: "decision_minute"
+    label: "Minuta de Decisión/Acuerdo"
+    folder: "documentos/minutas"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Date", name: "date", widget: "datetime" }
+      - { label: "Attendees", name: "attendees", widget: "list" }
+      - { label: "Body", name: "body", widget: "markdown" }
