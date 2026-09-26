@@ -1,6 +1,6 @@
-# Kestrel: Data Fabric & Persistence
+# Prim: Data Fabric & Persistence
 
-Kestrel uses a **Bifurcated Persistence** model to ensure data sovereignty, high performance, and total traceability.
+Prim uses a **Bifurcated Persistence** model to ensure data sovereignty, high performance, and total traceability.
 
 ## 1. Functional Domains (SoT)
 

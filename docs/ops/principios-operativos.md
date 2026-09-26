@@ -94,4 +94,4 @@ These principles apply to any instance (company, personal project, portfolio). T
 - Which investment strategy it follows
 - Which risk threshold it accepts
 
-Kestrel provides the rules. The instance provides the context.
+Prim provides the rules. The instance provides the context.

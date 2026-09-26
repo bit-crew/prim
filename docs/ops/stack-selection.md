@@ -11,7 +11,7 @@ Roles are stable; the stack is swappable. Selection pending.
 
 ## OAS Candidates
 
-Criteria (Kestrel axioms): library/binary > service, Zero-Ops, minimalism, self-hosted, token-efficient.
+Criteria (Prim axioms): library/binary > service, Zero-Ops, minimalism, self-hosted, token-efficient.
 
 | Candidate | Lang | Footprint | Notes |
 |-----------|------|-----------|-------|
@@ -23,9 +23,9 @@ Preliminary: ZeroClaw for max Zero-Ops; nanobot if auditing/modifying in Python.
 
 ## GOP: Git / Code Host (PENDING)
 
-Decision pending. The GOP (Git Operations Platform) is the SoT for code, DaC and IaC. It is **code hosting only** — it is NOT the identity provider (person authentication is handled on the VPS via YubiKey/SSH, see [Access Model](#access-model)). Choosing one affects the bootstrap runbook (see BOOTSTRAP.md) and the `onboard`/`offboard` flows for technical staff's code access.
+Decision pending. The GOP (Git Operations Platform) is the SoT for code, DaC and IaC. It is **code hosting only** — it is NOT the identity provider (person authentication is handled by the central IdP; code push uses the machine plane's short-lived SSH cert, see [Access Model](#access-model)). Choosing one affects the bootstrap runbook (see BOOTSTRAP.md) and the `onboard`/`offboard` flows for technical staff's code access.
 
-Criteria (Kestrel axioms, revised): **not self-hosted** (rejected: cost + ops overhead), data-portable (plain git), scriptable 100% via API/Terraform, RBAC for code by group. The former "free OIDC provider" criterion no longer applies since the GOP is not the identity layer.
+Criteria (Prim axioms, revised): **not self-hosted** (rejected: cost + ops overhead), data-portable (plain git), scriptable 100% via API/Terraform, RBAC for code by group. The former "free OIDC provider" criterion no longer applies since the GOP is not the identity layer.
 
 | Candidate | Hosting | API | Notes |
 |-----------|---------|-----|-------|
@@ -33,79 +33,80 @@ Criteria (Kestrel axioms, revised): **not self-hosted** (rejected: cost + ops ov
 | GitLab.com | SaaS | Full REST API | Cleaner nested-group RBAC if many nested projects appear. |
 | Codeberg | SaaS (Forgejo) | REST API | Viable only as a **visibility mirror**, not canonical. |
 
-Lean: **GitHub canonical + Codeberg mirror** for the public framework (kestrel/dev-setup/agent) — GitHub for reach, Codeberg mirror for axiom-alignment and as an escape hatch. Private instance repos: host not fixed, self-hosting rejected. See [Access Model](#access-model) for why the identity role was removed from the GOP.
+Lean: **GitHub canonical + Codeberg mirror** for the public framework (prim/dev-setup/agent) — GitHub for reach, Codeberg mirror for axiom-alignment and as an escape hatch. Private instance repos: host not fixed, self-hosting rejected. See [Access Model](#access-model) for why the identity role was removed from the GOP.
 
 ---
 
 ## Access Model
 
-How people reach internal company resources. Decided (2026-09-17).
+How people reach centralized company resources. Model revised (2026-09-26): **one identity (IdP) + two access planes**. Identity is the center; per-project VPS is optional.
 
-### Principle: two independent layers, never conflated
+### Principle: one identity, two planes
 
-- **Layer A — Transport:** Cloudflare Tunnel exposes each VPS with no public IP, no inbound ports. Cloudflare is **only the cable**; it does not authenticate people.
-- **Layer B — Person authentication:** the VPS `sshd` authenticates the person directly with a **FIDO2 hardware-backed SSH key (YubiKey)**. No email, no IdP, no third party.
+A single IdP holds people + groups. Every resource maps groups → permissions. People reach the core through two planes of different privilege:
 
-Internal resources (TDS/OLTP DB, private services, private R2) are reachable **only from the VPS** and do not authenticate people — being inside the VPS is the trust boundary.
+- **Browser plane (low privilege, consume):** SSO login in the front → view data (DuckDB-WASM, spreadsheet), chat, calendar, video, tickets, project tracking. Interact in place, no raw download.
+- **Machine plane (high privilege, produce):** the developer's machine authenticates with a **short-lived SSH certificate** signed by a **central CA** after the same SSO. Grants data-for-development, code push, and writing own data to R2. Centrally scoped; revoke = remove from the IdP group → cert stops issuing and expires in hours.
 
-### Rejected alternatives (chronological, all evaluated)
+### DECISIÓN PENDIENTE (leans)
 
-| Option | Why rejected |
+| Piece | Lean (start simple) | Alternatives |
+|-------|--------------------|--------------|
+| **IdP (identity)** | **Cloudflare Access** — CF already hosts R2/edge; managed, Zero-Ops | Authentik / Zitadel (self-hosted, more control, Level 3) |
+| **Machine auth (CA)** | **Cloudflare Access for Infrastructure** — managed SSH-CA, same SSO | Smallstep / Teleport (self-hosted CA) |
+| **Cert lifetime / 2FA** | 8–24h cert; YubiKey optional as a signing 2nd factor (adds security, not the identity) | Longer/shorter TTL; mandatory hardware factor |
+| **Front (browser plane)** | **Mattermost** (SSO) | Slack (SSO needs a paid Business+ plan), other |
+| **Permissions granularity** | **Coarse-grained** (group → R2 prefix / DWH schema) | Fine-grained (table/column/row) when it hurts |
+
+### Why a short-lived SSH CA (vs plain SSH keys)
+
+- **Centralized + revocable:** the CA + IdP groups are the single source of truth. No `authorized_keys` copied per host; no server-by-server cleanup on offboarding.
+- **Ephemeral:** certs expire on their own; a removed person loses access within hours.
+- **Same identity as the browser:** one login for both planes.
+- **Auditable:** each cert records who/when/which groups.
+
+### Historical context: why identity was previously moved off-IdP (now superseded)
+
+An earlier design (2026-09-17) removed email and all IdPs and pushed person auth to **YubiKey+SSH on each VPS**, with Cloudflare Tunnel as transport-only. Rationale then: avoid issuing email/IdP accounts and avoid self-hosting an IdP. That model is **superseded** by the centralized IdP + two-plane model above, because:
+
+- The new model keeps identity central and revocable without per-VPS key management.
+- It supports a browser plane (SSO) that YubiKey-per-VPS never covered.
+- VPS becomes optional per project rather than the mandatory unit of access.
+
+The prior rejections remain useful as context (they still shape the leans):
+
+| Previously rejected | Note under the new model |
 |--------|--------------|
-| Self-hosted git as IdP (Forgejo) | Self-hosting = ops overhead + cost. Hard "no self-hosting" constraint. |
-| Codeberg as Cloudflare IdP | Forgejo OAuth-as-OIDC for third parties unproven; no native Cloudflare connector; and self-host still required for control. |
-| Social identity (Google/Microsoft) | Rejected by owner — do not want employees using external personal accounts. |
-| Okta | Extra external dependency; still email/username-centric. |
-| Email OTP (Cloudflare Access) | Requires giving each person an email/alias. Owner does not want to issue email to employees. |
-| Service token only | Identifies a credential, not a person; transferable, weak identity. |
-| Device-bound enrollment | Not portable — breaks "use any machine / VSCode from another computer". |
+| Self-hosted git as IdP (Forgejo) | Still avoid self-hosting the IdP to start; managed Cloudflare Access is the lean. |
+| Social identity (Google/Microsoft) | Still not the primary identity; the IdP is Prim's own tenant. |
+| Okta | Extra external dependency; a lighter managed IdP (CF Access) is preferred to start. |
+| Email OTP | Email is no longer forbidden as an identity signal; the IdP decides the factor. |
+| Service token only | Still weak — the IdP identifies a person, tokens identify credentials. |
+| Device-bound enrollment | Still avoided — the machine plane uses per-session certs, portable across machines. |
 
-Chain of elimination: with **email removed AND all IdPs removed**, Cloudflare Access has no way to identify a *person*. Conclusion: **do not use Cloudflare for person auth at all.** Move authentication to the VPS.
-
-### Decided model
-
-```
-Transport:    Cloudflare Tunnel per VPS (no public IP, outbound-only)
-Auth:         VPS sshd + FIDO2 SSH key (ed25519-sk) → YubiKey touch required
-Portability:  identity = the person's YubiKey, not the device → any machine works
-Editors:      VSCode / Cursor / JetBrains / Helix via Remote-SSH
-              (ProxyCommand = cloudflared access ssh)
-Single session: MaxSessions 1 + MaxStartups 1 in sshd_config
-Internal res: localhost/private only, reachable solely from the VPS, no extra 2FA
-```
-
-### Why this satisfies the axioms
-
-- **Minimalism / Library > Service:** no IdP service, no Access policies for people, no Okta. One binary (`cloudflared`) for transport + native OpenSSH FIDO2 for auth.
-- **No self-hosting:** nothing self-hosted; Cloudflare + Hetzner + hardware key.
-- **Portability:** the YubiKey is the identity; any machine + the key = access. Solves multi-device and remote editors.
-- **Sovereignty / privacy:** no third party sees or brokers the person's identity; auth is local to the VPS.
-
-### Trade-off accepted
-
-Identity is "whoever holds the FIDO2 SSH key + the physical YubiKey," not a biometric/central identity of a person. The YubiKey (non-copyable, phishing-resistant, requires physical touch) mitigates credential theft. True per-person central identity would require an IdP or email — both explicitly rejected. This trade-off is accepted deliberately.
+YubiKey is **not discarded**: it can be required as a second factor to sign the SSH cert, adding hardware-backed protection without being the identity itself.
 
 ### Data & interface layers (corrected model)
 
-The source of truth for data is **Cloudflare R2 (storage) + DB** — NOT the VPS. Layers:
+The source of truth for data is **Cloudflare R2 (storage) + DWH/DB** — centralized, NOT a VPS. Layers:
 
 ```
-SOURCE (data lives here):   Cloudflare R2 + DB
+SOURCE (data lives here):   Cloudflare R2 + DWH/DB (centralized)
         │  accessed & PROCESSED at:
-VPS (compute, ephemeral):   uv, rust, DuckDB, etc. — processes, does not store
+Compute (optional VPS or local machine, ephemeral): uv, rust, DuckDB — processes, does not own
         │  VISUALIZED at:
-Employee device:            renders on screen — never the source
+Employee device (browser plane): renders on screen — never the source
 ```
 
-Security paradigm (Kestrel-specific): **facilitate access, keep data at the source.** Do not protect by denying access; protect by "use and read in place, do not download/copy". Access is liberal; exfiltration is what is constrained.
+Security paradigm (Prim-specific): **facilitate access, keep data at the source.** Do not protect by denying access; protect by "use and read in place, do not download/copy". Access is liberal; exfiltration is what is constrained.
 
 ### Interface needs by role (defined; stack NOT yet chosen)
 
 **All employees — the channel (common interface):**
 - Channel (Slack / Mattermost — candidate, not decided): communication with coworkers, calendar, project docs, talk to agents, schedule/consult meetings, create/manage tickets. Centralized. This is the primary shared interface.
 
-**Technical employees — VPS + own device:**
-- VPS with full stack (uv, rust, DuckDB, etc.). Connect from their device over **SSH** with their editor (Helix / VSCode / Cursor). Solved, not rigid — plain SSH to the VPS. See Access Model above.
+**Technical employees — machine plane (own device, optional VPS):**
+- Full stack (uv, rust, DuckDB, etc.) on their own machine or an optional per-project VPS. Connect over **SSH using a short-lived certificate** (central CA after SSO) with their editor (Helix / VSCode / Cursor). VPS is optional per project — the centralized data/services are reachable directly. See Access Model above (machine plane).
 
 **Everyone (technical + non-technical) — the hard part, still open:**
 Needs that neither the channel nor SSH-editor cover:
@@ -128,7 +129,7 @@ All serverless / scale-to-zero, aligned with Zero-New-Ops L1/L2. To be decided l
 | Write to R2 (save) | **Worker with R2 binding** | Runs only on request, scales to zero (the "lambda that scales and saves" intuition, Cloudflare-native). Writes to `<user>/...`. |
 | File tree of user's R2 folder | **Worker `list` by prefix `<user>/`** | Returns JSON, tab renders as tree. |
 | Data RBAC | **The Worker as the single data-access gate** | Backend-first; who can read/write which R2 prefix. |
-| Spreadsheet component for **final reports** ("like Excel") — OPEN | **Univer** (Apache 2.0, most complete, heaviest) · **Jspreadsheet/jExcel** (light, GPL/Pro) · **Glide Data Grid** (MIT, high-perf grid) · **RevoGrid** (MIT, light) · **Handsontable** (commercial for business) · **o-spreadsheet** (Odoo, OSS) · Syncfusion/Apryse (commercial, S3 integration built-in) | Non-technical users edit **final reports** (small tables), NOT raw data. This removes the hardest piece (rewriting Parquet by hand). Trade-off: Univer = most Excel-like but heaviest; Jspreadsheet/RevoGrid/Glide = lighter, more minimalist (closer to Kestrel spirit). UNDECIDED. |
+| Spreadsheet component for **final reports** ("like Excel") — OPEN | **Univer** (Apache 2.0, most complete, heaviest) · **Jspreadsheet/jExcel** (light, GPL/Pro) · **Glide Data Grid** (MIT, high-perf grid) · **RevoGrid** (MIT, light) · **Handsontable** (commercial for business) · **o-spreadsheet** (Odoo, OSS) · Syncfusion/Apryse (commercial, S3 integration built-in) | Non-technical users edit **final reports** (small tables), NOT raw data. This removes the hardest piece (rewriting Parquet by hand). Trade-off: Univer = most Excel-like but heaviest; Jspreadsheet/RevoGrid/Glide = lighter, more minimalist (closer to Prim spirit). UNDECIDED. |
 
 ### Open decisions that define the scope
 
@@ -140,13 +141,13 @@ All serverless / scale-to-zero, aligned with Zero-New-Ops L1/L2. To be decided l
    - **XLSX (OOXML):** open standard (ECMA-376 / ISO 29500, not Microsoft-locked) but complex/heavy in implementation; only justified if reports need formatting/formulas/multiple sheets.
    - **ODS:** truly-free OpenDocument alt to XLSX, less JS-component support.
    - Guidance: start CSV for plain tabular reports; escalate to XLSX only if formatting/formulas are actually needed (YAGNI). Trade-off triangle: open + light + rich-format → pick two.
-4. **Data-in-place rigor:** *pragmatic* (data reaches the browser tab, no download button — product-level protection) OR *strict* (not a single byte to the client → process on the VPS, send only pixels/results). Pragmatic fits "view as spreadsheet + charts"; strict would rule out DuckDB-WASM. UNDECIDED.
+4. **Data-in-place rigor:** *pragmatic* (data reaches the browser tab, no download button — product-level protection) OR *strict* (not a single byte to the client → process on compute, send only pixels/results). Pragmatic fits "view as spreadsheet + charts"; strict would rule out DuckDB-WASM. UNDECIDED.
 5. **Data format for raw analytical data:** Parquet (columnar, optimal for DuckDB read/query). Avro reserved for the WAL/streaming per FABRIC.md, NOT for the view/edit layer.
-6. **Channel:** Slack vs. Mattermost (self-hosted data sovereignty) vs. other. UNDECIDED.
+6. **Channel / front (browser plane):** **Mattermost lean** (SSO; self-hosted or cloud). Slack needs a paid Business+ plan for SSO. DECISIÓN PENDIENTE.
 
 ### Data-exfiltration caveat (AI editors)
 
-VSCode/Cursor with AI features (Copilot, Cursor AI) may send code context to the provider even though the code is processed on the VPS. For sovereignty-critical data, restrict which AI editors are allowed or use local models only. Tracked as an open policy decision.
+VSCode/Cursor with AI features (Copilot, Cursor AI) may send code context to the provider even though the code is processed on the machine/VPS. For sovereignty-critical data, restrict which AI editors are allowed or use local models only. Tracked as an open policy decision.
 
 
 ---

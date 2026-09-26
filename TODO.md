@@ -1,4 +1,4 @@
-# Kestrel — TODO
+# Prim — TODO
 
 Generalist operating framework. Manages personal life, projects, and companies.
 Automates the tedious: accounting, emails, files, repetitive tasks, tax filings.
@@ -7,7 +7,7 @@ Automates the tedious: accounting, emails, files, repetitive tasks, tax filings.
 
 ## Scope
 
-Kestrel serves for:
+Prim serves for:
 - **Personal life** — emails, files, reminders, tedious tasks
 - **Own projects** — management once they generate revenue
 - **Companies** — reusable operating model (any instance)
@@ -21,8 +21,8 @@ It is not only financial. It is the operating system of your productive life.
 - [x] `docs/fiscal/guia-tributaria-sas.md` — Colombia tax rules for any SAS
 - [x] `docs/ops/principios-operativos.md` — Minimalism, technological governance, ROE, debt, quality
 - [x] `docs/governance/votaciones-documentos.md` — Voting and legal documents pattern (REVIEW PENDING)
-- [x] Instance cleanup — references to kestrel instead of duplicated content
-- [x] Access model decided — YubiKey/SSH on the VPS (see GOVERNANCE.md / stack-selection.md)
+- [x] Instance cleanup — references to prim instead of duplicated content
+- [ ] Access model — REVISED to IdP + two planes (browser SSO + machine SSH-CA). Leans decided, specifics DECISIÓN PENDIENTE (see GOVERNANCE.md / stack-selection.md)
 - [x] Transactional DB + queue decided — Turso + native CDC (see stack-selection.md)
 
 ---
@@ -32,12 +32,12 @@ It is not only financial. It is the operating system of your productive life.
 ### Fundamental separation
 
 ```
-kestrel/                          (this repo)
+prim/                          (this repo)
 ├── Operating model             → Rules (docs: fiscal, ops, governance)
 ├── Channel integration         → Employee interface (Mattermost + agent)
 └── config.yaml                 → Defines the instance (DB, storage, repos)
 
-dev-setup/                        (separate repo, NOT kestrel)
+dev-setup/                        (separate repo, NOT prim)
 └── Nix + dotfiles + technical access (direct DB, CLI, cloud infra)
 ```
 
@@ -45,7 +45,7 @@ The channel is the same for everyone. The dev environment is a separate concern 
 
 ### Employee interface — the channel (decided)
 
-The primary employee interface is the **channel** (Slack / Mattermost — not finally decided),
+The primary employee interface is the **channel / front** (browser plane, SSO — **Mattermost lean**; Slack needs a paid plan for SSO),
 not a web portal. Per GOVERNANCE.md: employees interact in the channel and with the agent; there is **no portal** as the source of truth.
 
 | Capability | Detail | Backend-first |
@@ -83,24 +83,28 @@ The channel/apps sync with R2/Git. The user may keep temporary local files they 
 ```yaml
 instance:
   name: <project_name>
-  repo_code: <GOP>/<org>/<project_name>.git   # code host (technical staff)
+  repo_code: <GOP>/<org>/<project_name>.git   # code host (SSO via IdP)
   db: <tds-dsn>                                # TDS/OLTP, engine in stack-selection.md
-  storage: s3://...                            # R2 compatible
+  storage: s3://...                            # R2 compatible (data core)
+identity:
+  idp: cloudflare-access   # single IdP (DECISIÓN PENDIENTE). Groups map to permissions.
+  machine_ca: cf-access-infra   # short-lived SSH cert authority (DECISIÓN PENDIENTE)
+  groups: [admins, developers, data-readers, data-writers]   # coarse-grained to start
+front:
+  type: mattermost   # browser plane entry, SSO (DECISIÓN PENDIENTE)
 agent:
   type: oas   # Operational Assistant. Stack: docs/ops/stack-selection.md
   steering: <GOP>/<org>/agent.git
-access:
-  identity: yubikey-ssh   # person auth on the VPS, not IdP/email
 ```
 
-No `profile` or `environment` field. Kestrel defines the instance, not the developer's environment.
+No `profile` or `environment` field. Prim defines the instance (data + identity + services), not the developer's environment. Per-project VPS is optional and not part of this config.
 
 ### Boundaries between projects
 
 | Project | Responsibility |
 |----------|----------------|
-| kestrel/ | Operating model + instance config + channel/agent integration |
-| dev-setup/ | Personal technical environment (Nix, dotfiles). NOT part of kestrel |
+| prim/ | Operating model + instance config + channel/agent integration |
+| dev-setup/ | Personal technical environment (Nix, dotfiles). NOT part of prim |
 | agent/ | Steering for LLMs. Cloned by dev-setup |
 | `<project_name>/` | Specific instance: statutes, investment policy, OLTP |
 
@@ -130,7 +134,7 @@ Local agent on each machine with per-user memory in R2 and a shared RAG.
 ┌─────────────────────────────────────────┐
 │  Shared RAG                             │
 │                                         │
-│  - kestrel/ (operating model)           │
+│  - prim/ (operating model)           │
 │  - <project_name>/ (statutes, rules)    │
 │  - TDS/OLTP (financial data)            │
 │  - Channel history (conversations)      │
@@ -151,7 +155,7 @@ Employee asks in the channel
 │  1. Identify user                 │
 │  2. Load individual memory (R2)   │
 │  3. Search the shared RAG:        │
-│     - Docs (kestrel + <project_name>) │
+│     - Docs (prim + <project_name>) │
 │     - DB (TDS/OLTP)               │
 │     - Channel history (project)   │
 │  4. Generate response             │
@@ -208,8 +212,7 @@ Agent integration:
 - Agent reads the full history of the project channels (RAG)
 - Webhook triggers the agent when someone asks
 - The agent answers in the same channel
-- If the VPS has no fixed IP: Cloudflare Worker as a public proxy
-- If the VPS has a fixed IP: direct webhook
+- Hosting: the agent runs as a centralized SSO service (Worker/serverless preferred). A Cloudflare Worker can front it as a public proxy if the compute has no fixed public endpoint.
 
 ---
 
@@ -228,9 +231,9 @@ Agent integration:
 
 ## Pending decisions
 
-- [ ] What kestrel does vs what agent/ does (technical steering)
-- [ ] What kestrel does vs what dev-setup/ does (infra/environment)
-- [ ] What lives in kestrel vs what lives in an instance (company, personal life)
+- [ ] What prim does vs what agent/ does (technical steering)
+- [ ] What prim does vs what dev-setup/ does (infra/environment)
+- [ ] What lives in prim vs what lives in an instance (company, personal life)
 - [ ] Final form: Python package, knowledge base, both, something else
-- [ ] Review the voting pattern (kestrel/docs/governance/)
+- [ ] Review the voting pattern (prim/docs/governance/)
 - [ ] Instance OLTP: stays as is (specific to asset protection)
