@@ -21,7 +21,7 @@ Use these labels for Agent-led classification:
 
 Security is an environmental condition, not a business logic function. Prim centralizes **one identity** and exposes it through **two planes of different privilege**. Identity is the center: a single IdP holds the people and their groups; every resource maps groups → permissions.
 
-> **DECISIÓN PENDIENTE (see [stack-selection.md](./docs/ops/stack-selection.md#access-model)):** IdP = **Cloudflare Access** (lean) or self-hosted (Authentik/Zitadel). Machine auth = **short-lived SSH CA via Cloudflare Access for Infrastructure** (lean) or Smallstep/Teleport. Front = **Mattermost** (lean; Slack needs a paid plan for SSO). Permissions granularity = **coarse-grained** to start.
+> **DECISIÓN PENDIENTE (see [stack-selection.md](./stack-selection.md#access-model)):** IdP = **Cloudflare Access** (lean) or self-hosted (Authentik/Zitadel). Machine auth = **short-lived SSH CA via Cloudflare Access for Infrastructure** (lean) or Smallstep/Teleport. Front = **Mattermost** (lean; Slack needs a paid plan for SSO). Permissions granularity = **coarse-grained** to start.
 
 ### Single source of truth: IdP + groups
 
@@ -45,7 +45,7 @@ Onboarding = add the person to the correct IdP groups. Offboarding = remove them
 The person logs in with user+password / SSO in the front and clicks through to services. Everything is **view/interact in place**; raw data is never downloaded.
 
 - Front (Mattermost — candidate): chat, calendar, video calls, tickets/tasks, project tracking, brief docs.
-- Data viewing/editing: DuckDB-WASM (query/chart raw data in the tab) + a spreadsheet component (edit final reports), saved to the person's own R2 folder. Stack open — see [stack-selection.md](./docs/ops/stack-selection.md#access-model).
+- Data viewing/editing: DuckDB-WASM (query/chart raw data in the tab) + a spreadsheet component (edit final reports), saved to the person's own R2 folder. Stack open — see [stack-selection.md](./stack-selection.md#access-model).
 - Permission model: the front SSO + a Worker/data-gate enforce which groups can see/interact with what (coarse-grained to start).
 
 ### Plane B — Machine (high privilege, produce)
@@ -154,5 +154,43 @@ Eliminate polling and BI dashboards through push-based alerts in the EPE (functi
 ## 4. Documentation Strategy (DaC)
 
 - **Non-Technical:** Statutes and agreements in a central repo, published as GOP Pages.
-- **Technical:** API and environment docs live within each repo (`Docs-in-Repo`).
-- **Visual:** Use **Markmap** for planning and **Mermaid** for architecture diagrams.
+- **Technical:** Documentation lives **next to the code it describes** (`Docs-in-Repo`,
+  co-location / sidecar pattern — the industry standard for internal dev docs).
+- **Visual (two tools, each in its domain):**
+  - **Markmap** → mindmaps / trees (e.g. IPO). Renders to **HTML** (interactive:
+    collapse/expand/zoom). Source = `.md` (readable as-is in the repo). Published
+    on Pages for full interactivity. Node required only in CI, never local.
+  - **D2** → architecture diagrams / flows / containers. Renders to **SVG**
+    (static image). Go binary, no Node. Colors/typeface from `theme` in
+    `src/config.yaml` (brand: carbon `#2B2D29` + raw `#F3F0E7`, Courier Prime).
+  - **Mermaid** → dropped (D2 cleaner, avoids Node locally).
+
+- **Automation (automatic + free):** on push, a GitHub Action
+  (`.github/workflows/pages.yml`) renders every `*.mm.md` → Markmap HTML and every
+  `*.d2` → D2 SVG, and publishes to **GitHub Pages**
+  (`https://bit-crew.github.io/prim/`). Mindmaps are **linked** from normal docs
+  to their rendered HTML (e.g. `.../ipo.html`), not embedded (GitHub does not run
+  HTML inside `.md`). Convention: mindmap sources use the **`*.mm.md`** suffix
+  (still valid markdown, readable in the repo). Rendering happens **only in CI**
+  (GitHub Actions) — nothing is generated or installed locally.
+
+### Repo structure (co-location, kept organized)
+
+Documentation for a specific piece of code lives beside it; only cross-cutting
+docs are centralized. This keeps docs close to code (so they do not rot) without
+cluttering the root.
+
+```
+prim/
+├── README.md              # cover page (North Star, how to use)
+├── docs/                  # documentation (cross-cutting + global architecture)
+├── d2/                    # D2 sources (architecture diagrams) → rendered to img/
+├── img/                   # rendered output (SVG from D2, HTML from Markmap)
+├── src/                   # code
+│   ├── config.yaml        # the single entry point (instance + theme)
+│   └── schema/            # ddl.sql (+ its own README when needed)
+├── infra/                 # IaC (terraform/Multy); doc sits beside it
+```
+
+Rule: **doc of a module → beside the module** (a `README.md` in that folder);
+**cross-cutting doc → `docs/`**; **global architecture → root**.

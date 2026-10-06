@@ -1,4 +1,5 @@
 # System
+
 ## INPUT
 ### SYMPTOM: Dispersion of Efforts (Lack of impact)
 - WHY
@@ -224,7 +225,7 @@
     - 2. Tax/legal obligations tracked informally (or not at all)
       - 3. No owner and no calendar for statutory deadlines
         - 4. **Silent accrual of legal/fiscal liability** (fines, dissolution risk) <small><small>
-          **NOTE:** `SAS obligations documented in docs/fiscal/guia-tributaria-sas.md` </small></small>
+          **NOTE:** `SAS obligations documented in docs/guia-tributaria-sas.md` </small></small>
           - STRATEGY
             - A. Compliance-by-Calendar (Push, no dashboard) <small><small>
               `Statutory/tax deadlines as first-class scheduled events (SoT)`

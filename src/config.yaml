@@ -1,0 +1,59 @@
+# Prim — instance config (the single entry point).
+# This is what the one-command installer fills: interactive mode asks for each
+# value one by one; unattended mode loads this file as-is. See README (North Star)
+# and BOOTSTRAP.md. Supported platforms are a fixed, finite set — not "any platform".
+
+# --- What the user brings (prerequisites) ---
+instance:
+  name: ""                 # REQUIRED: company / project name
+  org: ""                  # REQUIRED: org/namespace for repos
+  repo_code: ""            # REQUIRED: GOP repo, e.g. <org>/<name>.git (host from gop.platform)
+
+# Transactional DB (TDS/OLTP). Engine fixed: Turso (libSQL). See stack-selection.md.
+db:
+  provider: turso          # fixed supported platform
+  api_key: ""              # REQUIRED: Turso API key (secret — not committed in real use)
+  url: ""                  # libSQL DSN, created by the installer if empty
+
+# Object storage + edge. Engine fixed: Cloudflare (R2). See stack-selection.md.
+storage:
+  provider: cloudflare     # fixed supported platform
+  api_key: ""              # REQUIRED: Cloudflare API key (secret)
+  bucket: ""               # R2 bucket, created by the installer if empty
+
+# Code host (GOP). One fixed, supported platform (DECISIÓN PENDIENTE — see stack-selection.md).
+# The user brings their repo on a supported host; the installer does not support "any git".
+gop:
+  platform: ""             # REQUIRED: supported GOP (github | gitlab | codeberg) — set once decided
+
+# Identity + permissions (single IdP, two planes). DECISIÓN PENDIENTE (leans in stack-selection.md).
+identity:
+  idp: ""                  # e.g. cloudflare-access (lean)
+  machine_ca: ""           # short-lived SSH cert authority (e.g. cf-access-infra)
+  groups: [admins, developers, data-readers, data-writers]   # coarse-grained to start
+
+# Browser-plane front (SSO entry). DECISIÓN PENDIENTE (Mattermost lean).
+front:
+  type: ""                 # e.g. mattermost
+
+# Operational Assistant. Stack candidates in stack-selection.md.
+agent:
+  type: oas
+  steering: ""             # <org>/agent.git
+
+# Optional LLM provider for the AI interface (AIProvider abstraction).
+# The core runs fully without this (no-AI mode). Never commit real secrets.
+llm:
+  provider: ""             # optional, e.g. openai
+  api_key: ""              # optional
+
+# --- Brand theme: visual convention. Each project overrides its own. ---
+# Used by Diagrams-as-Code (D2) and the front. Brand source: logo (bitcrew).
+theme:
+  font:
+    family: "Courier Prime"               # brand typeface (monospace)
+    regular: "assets/fonts/CourierPrime-Regular.ttf"   # embedded in rendered SVGs
+  colors:
+    ink: "#2B2D29"         # carbon gray  — backgrounds / containers
+    raw: "#F3F0E7"         # raw/bone     — text / light fills
+    accent: "#A0A29E"      # mid gray     — borders / connectors

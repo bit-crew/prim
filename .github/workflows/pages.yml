@@ -1,0 +1,80 @@
+name: Render diagrams and publish to Pages
+
+# Renders every *.mm.md (Markmap -> interactive HTML) and every *.d2 (D2 -> SVG),
+# then publishes the result to GitHub Pages. Node is used ONLY here (CI), never
+# installed locally. See docs/GOVERNANCE.md (DaC) and docs/stack-selection.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.mm.md"
+      - "**/*.d2"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up output dir
+        run: mkdir -p _site
+
+      # --- Markmap: every *.mm.md -> interactive HTML ---
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Render Markmaps
+        run: |
+          shopt -s globstar nullglob
+          for f in **/*.mm.md; do
+            base="$(basename "$f" .mm.md)"
+            npx -y markmap-cli --no-open "$f" -o "_site/${base}.html"
+          done
+
+      # --- D2: every *.d2 -> SVG (brand font if present) ---
+      - name: Install D2
+        run: curl -fsSL https://d2lang.com/install.sh | sh -s --
+      - name: Render D2
+        run: |
+          shopt -s globstar nullglob
+          FONT=""
+          [ -f assets/fonts/CourierPrime-Regular.ttf ] && FONT="--font-regular assets/fonts/CourierPrime-Regular.ttf"
+          for f in **/*.d2; do
+            base="$(basename "$f" .d2)"
+            d2 $FONT "$f" "_site/${base}.svg"
+          done
+
+      - name: Minimal index
+        run: |
+          echo "<h1>Prim diagrams</h1><ul>" > _site/index.html
+          for h in _site/*.html; do
+            [ "$(basename "$h")" = "index.html" ] && continue
+            n="$(basename "$h")"; echo "<li><a href=\"$n\">$n</a></li>" >> _site/index.html
+          done
+          echo "</ul>" >> _site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: render
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

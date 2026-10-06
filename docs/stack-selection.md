@@ -29,11 +29,11 @@ Criteria (Prim axioms, revised): **not self-hosted** (rejected: cost + ops overh
 
 | Candidate | Hosting | API | Notes |
 |-----------|---------|-----|-------|
-| GitHub | SaaS | Full REST API + mature Terraform provider | Max visibility/discovery; best tooling. Canonical for the public framework. |
+| GitHub | SaaS | Full REST API + mature Terraform provider | Most mature automation (RBAC/repos via Terraform); max visibility. |
 | GitLab.com | SaaS | Full REST API | Cleaner nested-group RBAC if many nested projects appear. |
-| Codeberg | SaaS (Forgejo) | REST API | Viable only as a **visibility mirror**, not canonical. |
+| Codeberg | SaaS (Forgejo) | REST API | Most axiom-aligned; automation/API less mature than GitHub. |
 
-Lean: **GitHub canonical + Codeberg mirror** for the public framework (prim/dev-setup/agent) — GitHub for reach, Codeberg mirror for axiom-alignment and as an escape hatch. Private instance repos: host not fixed, self-hosting rejected. See [Access Model](#access-model) for why the identity role was removed from the GOP.
+Lean: **DECISIÓN PENDIENTE — open for now.** The GOP will be **one fixed, supported platform**, not free-per-project: the automation (bootstrap/IaC creating repos, applying group RBAC via Terraform, `onboard`/`offboard`) cannot support every git host at once. The choice is among the candidates above and stays open. (Where the Prim framework repo itself is parked is a trivial operational fact, not a stack decision — not documented here.) See [Access Model](#access-model) for why the identity role was removed from the GOP.
 
 ---
 
@@ -188,36 +188,38 @@ CONCEPT.md lists **S3/GCS + Iceberg** for the IDS. Honest caveat: Iceberg (catal
 
 ---
 
-## Diagrams-as-Code (PENDING)
+## Diagrams-as-Code (DECIDED: Markmap + D2)
 
-Tool for planning mindmaps (e.g. `IPO.md`) and architecture diagrams. GOVERNANCE.md (DaC) currently says "Markmap for planning, Mermaid for architecture". Revisiting to reduce tools and avoid Node. DECISIÓN PENDIENTE — kept open deliberately.
+Two tools, each in its domain. Mermaid dropped.
 
-### Constraint
+| Tool | Domain | Output | Runtime | Notes |
+|------|--------|--------|---------|-------|
+| **Markmap** | Mindmaps / trees (e.g. IPO) | **HTML** (interactive: collapse/expand/zoom) | Node/JS — **CI only**, never installed locally | Source = `.md` (readable in the repo as-is). Published on Pages for interactivity. |
+| **D2** | Architecture diagrams / flows / containers | **SVG** (static image) | **Go binary** (no Node) | Custom fonts + theme from `src/config.yaml`. |
+| ~~Mermaid~~ | — | — | Node/JS | Dropped — D2 cleaner (ELK layout), avoids Node locally. |
 
-- **No Node** if avoidable (aligns with "Library/binary > Service", no `node_modules`).
-- Must be renderable **as a static image (SVG/PNG)** to post in the channel — no chat (Slack/Mattermost/Markmap/Mermaid/D2) auto-renders diagram code; the agent/Worker renders and posts the image. Markmap's HTML-interactive output suits the browser plane, not the chat.
+### Rationale for the split
 
-### Candidates evaluated
+D2 does not produce interactive HTML (only SVG/PNG/PDF/PPTX). Markmap produces
+an interactive HTML that is navigable (collapse/expand/zoom) and its source is
+plain `.md` — readable in the repo without rendering. Each tool covers what the
+other cannot:
+- **Markmap** = trees/mindmaps → interactive HTML (IPO, planning).
+- **D2** = boxes/arrows/containers → SVG (architecture, data flows).
 
-| Tool | Runtime | Covers | Aesthetics | Node? | Notes |
-|------|---------|--------|-----------|-------|-------|
-| **Markmap** | Node/JS | Radial mindmaps only | Best for mindmaps (radial, collapsible, interactive) | **Yes** | No native non-Node renderer. Usable ephemerally via `nix run nixpkgs#nodePackages.markmap-cli` (no global install). HTML output → browser plane, not chat. |
-| **Mermaid** | Node/JS (renderer) | Diagrams + basic `mindmap` | Good for diagrams; rigid mindmaps | Yes (JS) | Non-Node renderers exist: `merman` (Rust), `mmaid-go` (Go binary), `mermaid-term` (Python/uv). Widely supported. |
-| **D2** | **Go binary** | Diagrams + nested-container hierarchies | Cleaner than Mermaid (ELK layout); best-looking overall | **No** | Single binary, `--watch` preview, exports SVG/PNG. Does NOT do Markmap-style radial mindmaps. Strong "one tool to replace both" candidate. |
-| **Graphviz (`dot`)** | Binary (nixpkgs) | Graphs/hierarchies | Technical, less ergonomic | No | Rock-solid, decades of use. Aesthetics below D2. |
-| **PlantUML** | **JVM (Java)** | UML, mindmaps, WBS | Good, dated | No (but Java) | Trades Node for Java — not lighter. |
-| **Glypho** | binary/SVG | Diagrams (LLM-oriented short syntax) | New | No | Very new, immature — risky as a base. |
-| **Graph-Easy** | Perl | ASCII diagrams in terminal | Basic ASCII | No | Lightweight; Perl ecosystem. |
+### Constraints
 
-### Leaning (not decided)
-
-- **D2** as a single non-Node tool for architecture + hierarchies (incl. `IPO.md` restructured as nested containers), rendered to SVG/PNG and posted to the channel by the agent/Worker.
-- **Markmap kept ephemeral** (`nix run`, no install) only if the radial mindmap is specifically wanted for browser-plane planning.
-- Trade-off accepted: D2 does not reproduce Markmap's radial mindmap. If that exact form is a hard requirement, Markmap (Node, ephemeral) stays for that niche.
+- **No Node locally** — Markmap runs only in CI (GitHub Action / equivalent);
+  developers never install it. D2 is a Go binary (local, no Node).
+- Renderable as static image (SVG) to post in the channel (D2). Markmap HTML is
+  for Pages / browser consumption, not the channel.
 
 ### Open decisions
 
-1. **Single tool vs split:** D2 for everything, OR D2 (diagrams) + Markmap-ephemeral (radial mindmaps). UNDECIDED.
-2. **Mermaid renderer (if Mermaid is kept for compatibility):** `merman` (Rust) vs `mmaid-go` (Go) vs `mermaid-term` (uv). UNDECIDED.
-3. **Verify D2 is in nixpkgs** for declarative install in `dev-setup` before committing. PENDING.
-4. **Channel render integration:** who renders (agent vs Worker) and whether the front (Mattermost lean) auto-renders on a code block. Ties to the front decision (see Access Model open decisions). UNDECIDED.
+1. **CI workflow:** Action that renders `*.md` → Markmap HTML + `*.d2` → D2 SVG
+   and publishes to Pages. PENDING (depends on where the repo is hosted).
+2. **Verify D2 is in nixpkgs** for declarative install in `dev-setup`. PENDING.
+3. **Font asset:** add `CourierPrime-Regular.ttf` to `assets/fonts/` so D2 embeds
+   it in the SVG (else fallback monospace). PENDING.
+4. **Channel render integration:** who renders diagrams for the channel (agent vs
+   Worker). Ties to the front decision. UNDECIDED.

@@ -23,9 +23,9 @@ Prim is reached through **two planes of different privilege, backed by the same 
 | **Browser** | Low (consume) | User+password / SSO in the front | View data, chat, calendar, video, tickets, project tracking, edit final reports | Instant (SSO session/group) |
 | **Machine** | High (produce) | Same SSO → short-lived SSH certificate (central CA) | Data for development, push code, write own data to R2 | Central: remove from group → cert stops issuing, expires in hours |
 
-> **DECISIÓN PENDIENTE (IdP):** lean = **Cloudflare Access** as the single IdP (CF already hosts R2/edge; "start simple"). Alternatives: Authentik/Zitadel (self-hosted). See [stack-selection.md](./docs/ops/stack-selection.md#access-model).
-> **DECISIÓN PENDIENTE (machine auth):** lean = **SSH with a short-lived CA** via **Cloudflare Access for Infrastructure** (managed). Alternative: Smallstep/Teleport (self-hosted). Optional 2nd factor: YubiKey to sign the cert (adds security, is not the identity). See [stack-selection.md](./docs/ops/stack-selection.md#access-model).
-> **DECISIÓN PENDIENTE (front):** lean = **Mattermost** (SSO). Slack requires a paid plan for SSO. See [stack-selection.md](./docs/ops/stack-selection.md#access-model).
+> **DECISIÓN PENDIENTE (IdP):** lean = **Cloudflare Access** as the single IdP (CF already hosts R2/edge; "start simple"). Alternatives: Authentik/Zitadel (self-hosted). See [stack-selection.md](./stack-selection.md#access-model).
+> **DECISIÓN PENDIENTE (machine auth):** lean = **SSH with a short-lived CA** via **Cloudflare Access for Infrastructure** (managed). Alternative: Smallstep/Teleport (self-hosted). Optional 2nd factor: YubiKey to sign the cert (adds security, is not the identity). See [stack-selection.md](./stack-selection.md#access-model).
+> **DECISIÓN PENDIENTE (front):** lean = **Mattermost** (SSO). Slack requires a paid plan for SSO. See [stack-selection.md](./stack-selection.md#access-model).
 > **DECISIÓN PENDIENTE (permissions granularity):** start **coarse-grained** (by group/prefix/schema); refine to fine-grained only when it hurts (YAGNI).
 
 ## 3. Technology Summary (The Stack)
@@ -34,12 +34,12 @@ Prim is reached through **two planes of different privilege, backed by the same 
 | :--- | :--- | :--- |
 | **Identity (IdP)** | **Single IdP (DECISIÓN PENDIENTE: Cloudflare Access lean)** | One identity + groups for both planes; permissions propagate to every resource. |
 | **Machine auth** | **Short-lived SSH CA (DECISIÓN PENDIENTE: CF Access for Infrastructure lean)** | Central, revocable, ephemeral certs. No permanent keys copied per host. |
-| **TDS (OLTP)** | **Embedded SQL DB** | Row-Store for current state and logical catalog. Concrete engine in [docs/ops/stack-selection.md](./docs/ops/stack-selection.md#transactional-db--queue-decided-turso). |
+| **TDS (OLTP)** | **Embedded SQL DB** | Row-Store for current state and logical catalog. Concrete engine in [stack-selection.md](./stack-selection.md#transactional-db--queue-decided-turso). |
 | **IDS (OLAP)** | **R2 + Parquet** | Columnar on object storage. (Iceberg vs flat Parquet to revisit at scale.) |
 | **GOP** | **Git (Any platform)** | SoT for code, DaC, and IaC (code hosting; see stack-selection.md). |
 | **IaC** | **Multy.dev (Terraform)** | Cloud-agnostic abstraction layer. |
 | **EPE** | **orjson + iterators** | Functional stream processing, memory-efficient. |
-| **Queue/Events** | **In-DB CDC / event log** | Change log as queue ("the log is the queue"): no broker, no dual-write. Concrete engine in [stack-selection.md](./docs/ops/stack-selection.md#transactional-db--queue-decided-turso). |
+| **Queue/Events** | **In-DB CDC / event log** | Change log as queue ("the log is the queue"): no broker, no dual-write. Concrete engine in [stack-selection.md](./stack-selection.md#transactional-db--queue-decided-turso). |
 | **AQE (Ad-hoc)** | **DuckDB (incl. DuckDB-WASM in browser)** | Fast, in-process SQL queries on OLAP files, client- or server-side. |
 | **AQE (Batch)** | **Spark / Trino** | Large-scale batch processing on demand. |
 | **Front (browser plane)** | **DECISIÓN PENDIENTE (Mattermost lean)** | Communication + calendar + tickets + video; SSO entry point. |

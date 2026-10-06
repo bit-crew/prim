@@ -18,9 +18,9 @@ It is not only financial. It is the operating system of your productive life.
 
 ## Completed
 
-- [x] `docs/fiscal/guia-tributaria-sas.md` — Colombia tax rules for any SAS
-- [x] `docs/ops/principios-operativos.md` — Minimalism, technological governance, ROE, debt, quality
-- [x] `docs/governance/votaciones-documentos.md` — Voting and legal documents pattern (REVIEW PENDING)
+- [x] `docs/guia-tributaria-sas.md` — Colombia tax rules for any SAS
+- [x] `docs/principios-operativos.md` — Minimalism, technological governance, ROE, debt, quality
+- [x] `docs/votaciones-documentos.md` — Voting and legal documents pattern (REVIEW PENDING)
 - [x] Instance cleanup — references to prim instead of duplicated content
 - [ ] Access model — REVISED to IdP + two planes (browser SSO + machine SSH-CA). Leans decided, specifics DECISIÓN PENDIENTE (see GOVERNANCE.md / stack-selection.md)
 - [x] Transactional DB + queue decided — Turso + native CDC (see stack-selection.md)
@@ -78,23 +78,45 @@ Temporary (not persisted):
 
 The channel/apps sync with R2/Git. The user may keep temporary local files they do not upload.
 
-### config.yaml (draft)
+### Central data model — Events as the universal fact table
+
+Decided and canonical. Everything that happens (money + non-money) is one
+append-only fact in a single **`events`** table (Activity Schema pattern);
+**`money` is a filtered view**, not a separate table. OLAP history is Parquet in
+the IDS (DuckDB), OLTP state in Turso — analytics never hit Turso.
+
+- Schema (SoT): **[`src/schema/ddl.sql`](./src/schema/ddl.sql)** — `events`,
+  `entities`, `catalog`, `money` view.
+- Rationale: **[FABRIC.md](./docs/FABRIC.md)** → "Central Model: Events".
+- **Open (to fix before implementation):** exact `activity`/`kind` taxonomy
+  (seed `catalog`), single-entry signed vs double-entry, multi-currency.
+
+
+
+
+### config.yaml (the single entry point)
+
+Real file: **[`src/config.yaml`](./src/config.yaml)** — what the installer fills
+(interactive or unattended). Holds the user's prerequisites (instance, Turso +
+Cloudflare keys, GOP repo), identity, front, agent, optional LLM, and the brand
+`theme` (colors + typeface). Fixed supported platforms: Turso (db), Cloudflare
+(storage); GOP/IdP/front are DECISIÓN PENDIENTE (see stack-selection.md).
 
 ```yaml
 instance:
-  name: <project_name>
-  repo_code: <GOP>/<org>/<project_name>.git   # code host (SSO via IdP)
-  db: <tds-dsn>                                # TDS/OLTP, engine in stack-selection.md
-  storage: s3://...                            # R2 compatible (data core)
-identity:
-  idp: cloudflare-access   # single IdP (DECISIÓN PENDIENTE). Groups map to permissions.
-  machine_ca: cf-access-infra   # short-lived SSH cert authority (DECISIÓN PENDIENTE)
-  groups: [admins, developers, data-readers, data-writers]   # coarse-grained to start
-front:
-  type: mattermost   # browser plane entry, SSO (DECISIÓN PENDIENTE)
-agent:
-  type: oas   # Operational Assistant. Stack: docs/ops/stack-selection.md
-  steering: <GOP>/<org>/agent.git
+  name: <company>
+  org: <org>
+  repo_code: <org>/<name>.git     # host from gop.platform
+db:        { provider: turso, api_key: "", url: "" }
+storage:   { provider: cloudflare, api_key: "", bucket: "" }
+gop:       { platform: "" }       # github | gitlab | codeberg (one, pending)
+identity:  { idp: "", machine_ca: "", groups: [admins, developers, data-readers, data-writers] }
+front:     { type: "" }           # mattermost lean
+agent:     { type: oas, steering: <org>/agent.git }
+llm:       { provider: "", api_key: "" }   # optional; core runs without it
+theme:
+  font:   { family: "Courier Prime", regular: "assets/fonts/CourierPrime-Regular.ttf" }
+  colors: { ink: "#2B2D29", raw: "#F3F0E7", accent: "#A0A29E" }   # each project overrides
 ```
 
 No `profile` or `environment` field. Prim defines the instance (data + identity + services), not the developer's environment. Per-project VPS is optional and not part of this config.
@@ -350,6 +372,6 @@ interface, not a domain dependency**.
 - [ ] What prim does vs what dev-setup/ does (infra/environment)
 - [ ] What lives in prim vs what lives in an instance (company, personal life)
 - [ ] Final form: Python package, knowledge base, both, something else
-- [ ] Review the voting pattern (prim/docs/governance/)
+- [ ] Review the voting pattern (prim/docs/)
 - [ ] Instance OLTP: stays as is (specific to asset protection)
 - [ ] Input interfaces: AI provider deployment (shared OAS via MCP tools vs dedicated provider) — payroll/expenses are core domain, not an instance (see Input Interfaces section)

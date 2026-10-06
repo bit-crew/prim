@@ -2,9 +2,9 @@
 
 From absolute zero to a running **central core** (data + services + identity). Ordered by strict dependency: each resource requires the previous one. The corporate email is the bootstrap root (it creates every account). Per-project VPS is **optional** and comes last — the core does not require it.
 
-> **Placeholders:** `<project_name>` is the instance name (also the domain, e.g. `<project_name>.co`) and `<GOP>` is the Git/code host. Substitute both once decided.
+> **Placeholders:** `<project_name>` is the instance name  and `<GOP>` is the Git/code host. Substitute both once decided.
 >
-> **Identity model (revised 2026-09-26):** one **IdP** holds people + groups. Two access planes share that identity — **browser** (SSO, low privilege) and **machine** (short-lived SSH cert from a central CA, high privilege). Permissions propagate from IdP groups to every resource (R2 prefixes, DWH roles, service scopes). See [GOVERNANCE.md](./GOVERNANCE.md#2-access--identity-idp--two-planes) and [stack-selection.md](./docs/ops/stack-selection.md#access-model).
+> **Identity model (revised 2026-09-26):** one **IdP** holds people + groups. Two access planes share that identity — **browser** (SSO, low privilege) and **machine** (short-lived SSH cert from a central CA, high privilege). Permissions propagate from IdP groups to every resource (R2 prefixes, DWH roles, service scopes). See [GOVERNANCE.md](./GOVERNANCE.md#2-access--identity-idp--two-planes) and [stack-selection.md](./stack-selection.md#access-model).
 >
 > **DECISIÓN PENDIENTE:** IdP = **Cloudflare Access** (lean) or self-hosted. Machine CA = **CF Access for Infrastructure** (lean) or Smallstep/Teleport. Front = **Mattermost** (lean). Permissions = **coarse-grained** to start.
 
@@ -104,10 +104,10 @@ All services authenticate against the IdP. No separate logins.
 - This is the browser-plane entry: chat, calendar, video, tickets, project tracking.
 
 ### 3.3 Data viewing/editing (browser plane)
-- Static app on Cloudflare Pages + DuckDB-WASM (view/query raw data) + a spreadsheet component (edit final reports) + a Worker as the R2 data-gate (reads/writes scoped by group). Stack open — see [stack-selection.md](./docs/ops/stack-selection.md#access-model).
+- Static app on Cloudflare Pages + DuckDB-WASM (view/query raw data) + a spreadsheet component (edit final reports) + a Worker as the R2 data-gate (reads/writes scoped by group). Stack open — see [stack-selection.md](./stack-selection.md#access-model).
 
 ### 3.4 AI (OAS)
-- Deploy the operational assistant over the shared RAG (indexes `prim/` + instance docs + channel history + DWH). See [stack-selection.md](./docs/ops/stack-selection.md#oas-candidates).
+- Deploy the operational assistant over the shared RAG (indexes `prim/` + instance docs + channel history + DWH). See [stack-selection.md](./stack-selection.md#oas-candidates).
 
 ---
 

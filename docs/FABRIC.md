@@ -10,6 +10,25 @@ Prim uses a **Bifurcated Persistence** model to ensure data sovereignty, high pe
 | **IDS** | Immutable Data Store | Append-only storage: OLAP, blobs, and RAG vectors. |
 | **GOP** | Git Operations Platform | Versioned persistence for code, DaC, and IaC. |
 
+## 1b. Central Model: Events (Activity Schema)
+
+The core data model is a single append-only **`events`** table (Activity Schema
+pattern): one row per fact — `entity` did `activity` at `ts`. Money is not a
+special table but a **filtered view** (`activity IN` financial kinds). This covers
+the whole IPO map (finance, productivity, compliance, continuity) from one SoT.
+
+- **OLAP (analytics/history):** Parquet in the **IDS** (R2), **partitioned by date,
+  clustered by `activity`**, queried with **DuckDB**. All accounting/finance
+  reports and IPO metrics are aggregations here — the **OLTP store is never hit**.
+- **OLTP (current state):** the **TDS** (Turso) holds only recent/transactional
+  state, staying light.
+- **Immutability:** corrections are new rows (void + re-entry); the Turso CDC log
+  is the audit trail. Small dimension tables (`entities`, `catalog`) carry
+  who-is-who and the allowed activity/financial-kind taxonomy. Canonical schema:
+  **[`src/schema/ddl.sql`](../src/schema/ddl.sql)** (open points — taxonomy, single
+  vs double entry, multi-currency — tracked in TODO.md).
+
+
 ## 2. IDS Structure (Blob Storage)
 
 ```text
