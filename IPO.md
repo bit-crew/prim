@@ -69,6 +69,54 @@
             **[AGENT - Guardian]** `Enforce strict "Definition of Done" before purchase or deploy`
             `Block entry of code/assets without fulfilling checklist` </small></small>
 
+### SYMPTOM: Rudderless (no direction / wrong market)
+- WHY
+  - 1. Effort is executed without a defined destination
+    - 2. Strategy assumed, never made explicit
+      - 3. Vision lives in the founder's head, not in the SoT
+        - 4. **No single, written, queryable North Star** *(EOS "Vision" component | Wickman)* <small><small>
+          **DATA:** "No market need" is the #1 root cause of failure — 42% of post-mortems *(CB Insights)* </small></small>
+          - STRATEGY
+            - A. Explicit North Star (Backend-First) <small><small>
+              `One written vision doc in the SoT (Git), versioned`
+              `Every initiative must link to a vision objective (traceable)`
+              **[AGENT - Guardian]** `Block creation of an initiative with no linked vision objective`
+              `On new project: require a one-line "why this, why now" tied to the North Star`
+              **[AGENT - Assistant]** `Answer "does this align with the vision?" from the RAG` </small></small>
+
+### SYMPTOM: Building What Nobody Wants (no PMF)
+- WHY
+  - 1. Internal execution is optimized before demand is proven
+    - 2. Founder falls in love with the solution
+      - 3. No customer/demand validation gate before building
+        - 4. **Solution in search of a problem** *(Blank | Customer Development)* <small><small>
+          **DATA:** Poor product-market fit 43% + unsustainable unit economics 19% *(CB Insights)* </small></small>
+          - STRATEGY
+            - A. Demand-First Gate (Minimalism / anti-waste) <small><small>
+              `Rule: no build without a validated demand signal (paying intent or usage)`
+              `Track unit economics per product (does one unit pay for itself?)`
+              **[AGENT - Guardian]** `Block major build effort if no demand-validation record exists`
+              **[AGENT - Monitor]** `Alert if a product's unit economics turn negative`
+              `Alert if effort is spent on a product with no demand signal in N weeks` </small></small>
+
+### SYMPTOM: Redundant Work (teams build the same thing)
+- WHY
+  - 1. Several teams develop overlapping/duplicate solutions
+    - 2. They do not know what already exists (ignorance across teams)
+      - 3. Knowledge is fragmented in silos (each team its own repo/data)
+        - 4. No single source of truth consulted *before* building
+          - 5. **Absence of prior discovery** — nobody checks the unified knowledge before creating <small><small>
+            **DATA:** 61% of workers regularly recreate work that already exists *(Guru, 2024)*; 14% of time lost recreating unfound information *(Deloitte)* </small></small>
+            - STRATEGY
+              - A. Discovery-Before-Build (Prim thesis: unified data + agent) <small><small>
+                `SoT: all projects/repos/data unified in Cloudflare (R2 + RAG index)`
+                `Rule: creating a project/product requires a discovery step first`
+                **[AGENT - Guardian]** `On new project/product: semantic-similarity search over the unified RAG`
+                `If similarity > threshold, surface the existing effort and require justification to proceed`
+                **[AGENT - Monitor]** `Continuously detect convergent efforts across teams (push alert, not dashboard)`
+                `Alert both owners when two active efforts overlap semantically`
+                `Suggest merge/reuse instead of parallel rebuild` </small></small>
+
 ## PROCESS
 
 ### SYMPTOM: Communicational Friction
@@ -155,6 +203,36 @@
             `  - Transfer of active projects`
             `  - Reassignment of orphan tasks` </small></small>         
 
+### SYMPTOM: Organizational Amnesia (does not learn)
+- WHY
+  - 1. The same problems are solved from scratch again and again
+    - 2. Lessons are not captured where they are searched
+      - 3. Knowledge leaves with the person / lives in chats, not the SoT
+        - 4. **No systemic learning loop** — capture is ad-hoc, retrieval is manual <small><small>
+          **DATA:** Only 27% have a reliable maintained knowledge base *(Guru, 2024)*; employees spend ~19% of the week searching for information *(McKinsey)* </small></small>
+          - STRATEGY
+            - A. Learning as Flow (RAG-native, not an event) <small><small>
+              `Every post-mortem, decision and principle indexed into the unified RAG`
+              `Channel history is a first-class RAG source (per GOVERNANCE.md)`
+              `Rule: a resolved incident must emit a reusable "principle", not just a fix`
+              **[AGENT - Assistant]** `On a new problem, retrieve prior solutions/principles before work starts`
+              **[AGENT - Guardian]** `Flag when a "new" task matches a previously solved one` </small></small>
+
+### SYMPTOM: Regulatory/Legal Risk Ignored
+- WHY
+  - 1. Compliance is treated as an afterthought
+    - 2. Tax/legal obligations tracked informally (or not at all)
+      - 3. No owner and no calendar for statutory deadlines
+        - 4. **Silent accrual of legal/fiscal liability** (fines, dissolution risk) <small><small>
+          **NOTE:** `SAS obligations documented in docs/fiscal/guia-tributaria-sas.md` </small></small>
+          - STRATEGY
+            - A. Compliance-by-Calendar (Push, no dashboard) <small><small>
+              `Statutory/tax deadlines as first-class scheduled events (SoT)`
+              `Map each obligation to a responsible role (RBAC)`
+              **[AGENT - Monitor]** `Alert ahead of every statutory/tax deadline (lead time configurable)`
+              `Escalate if an obligation has no owner`
+              **[AGENT - Assistant]** `Answer "what do we owe, to whom, by when" from the fiscal docs + calendar` </small></small>
+
 ## OUTPUT
 
 ### SYMPTOM: System Degradation (Entropy) 
@@ -208,3 +286,49 @@
           **[AGENT - Monitor]** `Macro Monitoring (Inflation/Currency)`
           `Alert if loss of real value > defined threshold`
           `Suggest hedging or diversification strategies` </small></small>
+
+### SYMPTOM: Death by Running Out of Cash
+- WHY
+  - 1. The company stops because there is no operating cash
+    - 2. Burn rate tracked late or not at all (distinct from asset/equity risk)
+      - 3. Receivables uncollected; runway never projected forward
+        - 4. **No operating-cash early warning** (runway blindness) <small><small>
+          **DATA:** Running out of cash is the #2 root cause of failure — 29% of post-mortems *(CB Insights)* </small></small>
+          - STRATEGY
+            - A. Runway Monitoring (Push alerts, raw numbers) <small><small>
+              `Track cash-on-hand, burn rate, projected runway (months)`
+              `Distinguish operating liquidity from investment ROE (see principios-operativos.md)`
+              **[AGENT - Monitor]** `Alert if projected runway < defined threshold (e.g. 6 months)`
+              `Alert on overdue receivables (aging)`
+              `Send raw cash figures, not charts (Management by Exception)` </small></small>
+
+### SYMPTOM: Customer Churn (silent revenue leak)
+- WHY
+  - 1. Revenue erodes without a clear internal cause
+    - 2. Internal KPIs look green while customers leave
+      - 3. Retention/churn is not measured as a first-class output
+        - 4. **Optimizing the factory, ignoring the customer** (external truth missing) <small><small>
+          **DATA:** Complements the "Clientelism" symptom — internal-vs-client KPI divergence </small></small>
+          - STRATEGY
+            - A. Customer as an Output Metric (external SoT) <small><small>
+              `Track retention/churn and client satisfaction as core outputs`
+              `Client KPI outranks internal KPIs when they diverge (per Checks & Balances)`
+              **[AGENT - Monitor]** `Alert on churn spike or retention drop`
+              `Red alert if internal KPIs green while client KPI red (reuse divergence rule)`
+              **[AGENT - Assistant]** `Summarize churn reasons from channel/support history (RAG)` </small></small>
+
+### SYMPTOM: Incident Without Recovery (continuity)
+- WHY
+  - 1. An incident (data loss, breach, outage) halts operations
+    - 2. Backups/recovery assumed but never exercised
+      - 3. No defined recovery point/time; no drill
+        - 4. **Continuity assumed, not verified** (BCP/DR gap) <small><small>
+          **NOTE:** `Architecture provides R2 + WAL + checkpointing (see FABRIC.md); continuity must be a verified need, not a hope` </small></small>
+          - STRATEGY
+            - A. Verified Continuity (test the recovery, not the backup) <small><small>
+              `Define RPO/RTO per critical resource`
+              `Recovery drills as a recurring automated task (Technical Kaizen)`
+              `Crash-recovery via local WAL + S3/R2 confirmation (per FABRIC.md)`
+              **[AGENT - Monitor]** `Alert if a backup/replication check fails`
+              `Alert if a recovery drill has not run within its interval`
+              **[AGENT - Guardian]** `Block changes to critical data paths without a verified recovery point` </small></small>

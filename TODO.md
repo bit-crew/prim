@@ -216,6 +216,121 @@ Agent integration:
 
 ---
 
+## Input Interfaces (headless core, multiple frontends)
+
+**Payroll, purchases and expenses are core Prim domain**, not an optional add-on.
+Per `principios-operativos.md` §1 ("no payroll or expenses not tied to revenue"),
+§2 ("Immutable Traceability — every movement in auditable logs; Single Source of
+Truth") and TODO Scope ("automates the tedious: accounting, tax filings... the
+operating system of your productive life"), every money movement (worker pay,
+purchases, expenses, PILA, DIAN) is a first-class object of the reusable operating
+model. IPO.md reinforces this via the OUTPUT symptoms "Death by Running Out of
+Cash" (burn rate/runway), "Regulatory/Legal Risk Ignored" (PILA/DIAN mapped to
+`guia-tributaria-sas.md`) and "Equity risk". **Prim provides the rules (domain +
+calculations + legal); the instance provides only the context** (who the worker
+is, which accounts, which entities).
+
+The domain is **headless** but not command-only: one domain/backend, multiple
+interfaces. CLI and AI call **exactly the same domain services** — no logic
+duplicated between them.
+
+### Architecture principle
+
+```
+                      DOMAIN (legal/calc source of truth)
+                               │
+          ┌────────────────────┼────────────────────┐
+         CLI (Typer)       AI (typed tools)     AUTOMATION
+          │                    │                      │
+          └────────────────────┼──────────────────────┘
+                               │
+                        DOMAIN SERVICES
+                               │
+          ┌────────────────────┼────────────────────┐
+       Turso (OLTP          DIAN API             PILA operator
+       + native CDC
+       as audit log)
+                               │
+                           PAYMENTS (Nequi / banking)
+```
+
+The LLM is an **orchestrator**, never a direct actor. It never touches Turso,
+credentials, API keys, DIAN certificates or banking services directly. Flow:
+`User → LLM → tool selection → domain service → Turso/API → tool result → LLM → reply`.
+
+### Interface 1 — Interactive CLI
+
+- Built with **Typer/Rich** (thin layer; zero business logic — invokes domain services only).
+- Interactive mode interprets intent, asks only for missing data, executes, shows result, writes audit.
+- Explicit commands work headless (no LLM), e.g.:
+  - `payroll workday add --date 2026-10-02`
+  - `payroll payment create --worker worker_01 --amount 100000 --method nequi`
+  - `payroll payroll calculate --month 2026-10`
+  - `payroll payroll close --month 2026-10`
+
+### Interface 2 — AI chat
+
+Conversational agent using **tools / function calling** against the domain.
+The AI MUST NOT: compute legal values directly, modify the DB directly, invent
+percentages, run arbitrary SQL, or decide whether a financial operation is valid.
+It only calls typed tools. Keeps enough context to avoid re-asking stored data
+(worker, contract, salary, fund, entities, usual amount/method).
+
+### Tool layer (typed domain tools)
+
+`get_worker` · `get_contract` · `register_workday` · `register_absence` ·
+`calculate_daily_payroll` · `calculate_monthly_payroll` · `get_payroll_summary` ·
+`create_payment` · `get_payment_status` · `generate_payroll_receipt` ·
+`close_payroll_period` · `generate_pila` · `validate_pila` · `pay_pila` ·
+`get_pila_status` · `download_pila_receipt` · `generate_dian_payroll` ·
+`submit_dian_payroll` · `get_dian_status` · `calculate_severance` ·
+`create_severance_consignation` · `get_documents` · `archive_document` · `get_audit_log`
+
+### Tool security tiers
+
+| Tier | Examples | AI autonomy |
+|------|----------|-------------|
+| **READ** | queries, calculations, states, documents | auto-execute, no confirmation |
+| **WRITE** | register workday, modify data, generate documents | backend validation required |
+| **FINANCIAL** | pay worker, pay PILA, consign severance | **explicit confirmation + backend authorization** before real money moves |
+| **EXTERNAL** | transmit DIAN, send PILA, query providers | explicit confirmation + backend authorization |
+
+Confirmation is UX; **authorization is code**. FINANCIAL/EXTERNAL tools sit behind
+the backend's authorization layer (IdP groups → permissions), never behind prompt
+trust. Smart confirmation: unambiguous READ/low-risk WRITE may auto-run (e.g.
+"trabajó ayer" when there is a single worker and the date is unambiguous); any
+money movement shows period/worker/amount/operator/plan and waits for "sí".
+
+### No-AI mode (hard requirement)
+
+The whole system runs without an LLM. If the AI provider fails: payroll,
+calculations, external APIs and the DB keep working. The AI is an **additional
+interface, not a domain dependency**.
+
+### AI provider abstraction
+
+- `AIProvider` interface; initial impl `OpenAIProvider`. The agent receives only
+  available tools, schemas and needed context — **never secrets**.
+- Prim-core axiom (`library/binary > service`) is preserved by exposing the core
+  domain's typed tools as **MCP tools** the shared OAS (ZeroClaw/nanobot
+  candidates) consumes. The domain lives in Prim; the OAS is just one more frontend.
+
+### Turso adaptations (vs the spec's PostgreSQL assumption)
+
+- OLTP/TDS is **Turso (libSQL/SQLite)**, not PostgreSQL — "arbitrary SQL from the
+  LLM" stays forbidden; writes go through typed domain services only.
+- **Audit log = Turso native CDC.** `get_audit_log` reads the CDC table (every
+  insert/update/delete recorded, queryable like any other table) — no extra
+  queue/broker, consistent with the decided data stack.
+
+### Open decisions (interfaces)
+
+- [ ] AI provider deployment: shared OAS consuming the core domain's MCP tools vs a dedicated `OpenAIProvider` process (both call the same Prim domain services either way).
+- [ ] CLI distribution: shared `prim` CLI with subcommands (`prim payroll ...`, `prim expense ...`) vs separate binaries.
+- [ ] Backend authorization binding for FINANCIAL/EXTERNAL tools: map to which IdP groups.
+
+---
+
 ## Desired capabilities (no order or priority yet)
 
 - Automate income-tax filing and accounting
@@ -237,3 +352,4 @@ Agent integration:
 - [ ] Final form: Python package, knowledge base, both, something else
 - [ ] Review the voting pattern (prim/docs/governance/)
 - [ ] Instance OLTP: stays as is (specific to asset protection)
+- [ ] Input interfaces: AI provider deployment (shared OAS via MCP tools vs dedicated provider) — payroll/expenses are core domain, not an instance (see Input Interfaces section)

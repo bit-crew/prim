@@ -185,3 +185,39 @@ State of the data stack (2026-09-17). Some layers decided, two explicitly deferr
 ### Table-format note (to revisit, not blocking)
 
 CONCEPT.md lists **S3/GCS + Iceberg** for the IDS. Honest caveat: Iceberg (catalog + metadata) may be over-engineering at small/medium scale. Consideration for later: **flat partitioned Parquet on R2 + DuckDB** is more minimalist and sufficient until ACID/time-travel/concurrent writes are genuinely needed (YAGNI). Iceberg/Delta only when scale demands it. Not a blocker now.
+
+---
+
+## Diagrams-as-Code (PENDING)
+
+Tool for planning mindmaps (e.g. `IPO.md`) and architecture diagrams. GOVERNANCE.md (DaC) currently says "Markmap for planning, Mermaid for architecture". Revisiting to reduce tools and avoid Node. DECISIÓN PENDIENTE — kept open deliberately.
+
+### Constraint
+
+- **No Node** if avoidable (aligns with "Library/binary > Service", no `node_modules`).
+- Must be renderable **as a static image (SVG/PNG)** to post in the channel — no chat (Slack/Mattermost/Markmap/Mermaid/D2) auto-renders diagram code; the agent/Worker renders and posts the image. Markmap's HTML-interactive output suits the browser plane, not the chat.
+
+### Candidates evaluated
+
+| Tool | Runtime | Covers | Aesthetics | Node? | Notes |
+|------|---------|--------|-----------|-------|-------|
+| **Markmap** | Node/JS | Radial mindmaps only | Best for mindmaps (radial, collapsible, interactive) | **Yes** | No native non-Node renderer. Usable ephemerally via `nix run nixpkgs#nodePackages.markmap-cli` (no global install). HTML output → browser plane, not chat. |
+| **Mermaid** | Node/JS (renderer) | Diagrams + basic `mindmap` | Good for diagrams; rigid mindmaps | Yes (JS) | Non-Node renderers exist: `merman` (Rust), `mmaid-go` (Go binary), `mermaid-term` (Python/uv). Widely supported. |
+| **D2** | **Go binary** | Diagrams + nested-container hierarchies | Cleaner than Mermaid (ELK layout); best-looking overall | **No** | Single binary, `--watch` preview, exports SVG/PNG. Does NOT do Markmap-style radial mindmaps. Strong "one tool to replace both" candidate. |
+| **Graphviz (`dot`)** | Binary (nixpkgs) | Graphs/hierarchies | Technical, less ergonomic | No | Rock-solid, decades of use. Aesthetics below D2. |
+| **PlantUML** | **JVM (Java)** | UML, mindmaps, WBS | Good, dated | No (but Java) | Trades Node for Java — not lighter. |
+| **Glypho** | binary/SVG | Diagrams (LLM-oriented short syntax) | New | No | Very new, immature — risky as a base. |
+| **Graph-Easy** | Perl | ASCII diagrams in terminal | Basic ASCII | No | Lightweight; Perl ecosystem. |
+
+### Leaning (not decided)
+
+- **D2** as a single non-Node tool for architecture + hierarchies (incl. `IPO.md` restructured as nested containers), rendered to SVG/PNG and posted to the channel by the agent/Worker.
+- **Markmap kept ephemeral** (`nix run`, no install) only if the radial mindmap is specifically wanted for browser-plane planning.
+- Trade-off accepted: D2 does not reproduce Markmap's radial mindmap. If that exact form is a hard requirement, Markmap (Node, ephemeral) stays for that niche.
+
+### Open decisions
+
+1. **Single tool vs split:** D2 for everything, OR D2 (diagrams) + Markmap-ephemeral (radial mindmaps). UNDECIDED.
+2. **Mermaid renderer (if Mermaid is kept for compatibility):** `merman` (Rust) vs `mmaid-go` (Go) vs `mermaid-term` (uv). UNDECIDED.
+3. **Verify D2 is in nixpkgs** for declarative install in `dev-setup` before committing. PENDING.
+4. **Channel render integration:** who renders (agent vs Worker) and whether the front (Mattermost lean) auto-renders on a code block. Ties to the front decision (see Access Model open decisions). UNDECIDED.
