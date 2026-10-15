@@ -21,6 +21,37 @@ Criteria (Prim axioms): library/binary > service, Zero-Ops, minimalism, self-hos
 
 Preliminary: ZeroClaw for max Zero-Ops; nanobot if auditing/modifying in Python. Verify repos before committing.
 
+## CAG Memory: Coding-Agent Session Memory (DECIDED: tether over Turso)
+
+**This is the memory of the coding agent (CAG), not the OAS semantic brain.** They are two distinct layers — do not conflate them:
+
+| Layer | What it stores | Who uses it | Where it lives |
+|-------|----------------|-------------|----------------|
+| **CAG memory** (this section) | Per-repo decisions, bugfixes, conventions, gotchas; cross-session continuity for the coding agent | A developer while coding (Kiro and any MCP agent) | **Turso** (via tether), see below |
+| **OAS RAG brain** (`RAG/brain_index/` in FABRIC.md) | Vectorized context over business docs + DB + history | The OAS answering in-channel | **R2** (vector index over Parquet) — stays in R2 |
+
+Criteria (Prim axioms): library > service, Zero-Ops, local-first, shared across a team, on the already-decided stack (Turso), token-efficient.
+
+**Decision: [tether](https://github.com/sidyellur/tether)** — an MCP server over a local SQLite file that becomes an **embedded libSQL/Turso replica** when pointed at a hosted primary.
+
+Why tether over the alternatives:
+
+| Candidate | Lang | Centralization | Fit with Prim | Verdict |
+|-----------|------|----------------|---------------|---------|
+| **tether** | Python (uv) | Embedded replica on **Turso** — single-primary; writes push immediately, reads pull debounced | Reuses Turso (already decided); no new running service — the MCP process is ephemeral, launched by the agent over stdio; **Nivel 1/2** | **Chosen** |
+| Engram + Git Sync | Go binary | Batch, manual (`engram sync` → chunks in a git repo → peer pulls) | Async + human-in-the-loop; uses the code GOP as a data bus (mixes domains); merge-conflict risk | Rejected: not near-real-time; domain mixing |
+| Engram Cloud | Go binary | Self-hosted container (Go + **Postgres**) | A running service + Postgres (ajeno al stack) → **Nivel 3**, contradicts Zero-Ops | Rejected: new service + new DB engine |
+
+**How it runs (no extra service):** tether is an MCP server over **stdio** — the agent launches it as a subprocess and it dies with the session. Local-only by default (`~/.local/share/tether/memory.db`, Nivel 1). For shared team memory, install the sync extra and set `TETHER_SYNC_URL` (`libsql://<db>.turso.io`) + `TETHER_SYNC_TOKEN`: the local file becomes a Turso embedded replica. The central piece is Turso (managed), never a process Prim operates.
+
+**Shared-team model:** all developers use the same project name and the same Turso primary; `scope: project` memories (saved in the team lingua franca — FTS5 is monolingual) are visible to every teammate's agent near-real-time.
+
+**Analytics (viable, YAGNI until needed):** DuckDB can query the Turso/SQLite store directly for memory analytics (which decisions/conventions, how often recalled) with no data movement. Only if large-scale historical analytics are ever needed, export periodically to Parquet in R2 (`olap/`) and query alongside the rest. R2 is **not** the primary store for CAG memory.
+
+**Open / to validate (spike before committing in production):**
+1. tether is **pre-1.0 (v0.6.1)** — less production mileage; validate the 3-writer shared flow against a real Turso primary.
+2. Documented sync gap: writes made **while the backend is unreachable** land only in that device's local file and are not reconciled later ([tether#99](https://github.com/sidyellur/tether/issues/99)). Minor for stable connections; not zero.
+
 ## GOP: Git / Code Host (PENDING)
 
 Decision pending. The GOP (Git Operations Platform) is the SoT for code, DaC and IaC. It is **code hosting only** — it is NOT the identity provider (person authentication is handled by the central IdP; code push uses the machine plane's short-lived SSH cert, see [Access Model](#access-model)). Choosing one affects the bootstrap runbook (see BOOTSTRAP.md) and the `onboard`/`offboard` flows for technical staff's code access.
@@ -55,7 +86,7 @@ A single IdP holds people + groups. Every resource maps groups → permissions. 
 | **IdP (identity)** | **Cloudflare Access** — CF already hosts R2/edge; managed, Zero-Ops | Authentik / Zitadel (self-hosted, more control, Level 3) |
 | **Machine auth (CA)** | **Cloudflare Access for Infrastructure** — managed SSH-CA, same SSO | Smallstep / Teleport (self-hosted CA) |
 | **Cert lifetime / 2FA** | 8–24h cert; YubiKey optional as a signing 2nd factor (adds security, not the identity) | Longer/shorter TTL; mandatory hardware factor |
-| **Front (browser plane)** | **Mattermost** (SSO) | Slack (SSO needs a paid Business+ plan), other |
+| **Front (browser plane)** | **Discord** (decided; disposable adapter) | Self-hosted (Mattermost/Stoat) rejected: adds a running service for no gain since business data lives in R2/Turso/Git, not the chat |
 | **Permissions granularity** | **Coarse-grained** (group → R2 prefix / DWH schema) | Fine-grained (table/column/row) when it hurts |
 
 ### Why a short-lived SSH CA (vs plain SSH keys)
@@ -103,7 +134,7 @@ Security paradigm (Prim-specific): **facilitate access, keep data at the source.
 ### Interface needs by role (defined; stack NOT yet chosen)
 
 **All employees — the channel (common interface):**
-- Channel (Slack / Mattermost — candidate, not decided): communication with coworkers, calendar, project docs, talk to agents, schedule/consult meetings, create/manage tickets. Centralized. This is the primary shared interface.
+- Channel (**Discord**, decided): communication with coworkers, calendar, project docs, talk to agents, schedule/consult meetings, create/manage tickets. The primary shared interface — a thin, swappable adapter; business data lives in R2/Turso/Git, not the chat.
 
 **Technical employees — machine plane (own device, optional VPS):**
 - Full stack (uv, rust, DuckDB, etc.) on their own machine or an optional per-project VPS. Connect over **SSH using a short-lived certificate** (central CA after SSO) with their editor (Helix / VSCode / Cursor). VPS is optional per project — the centralized data/services are reachable directly. See Access Model above (machine plane).
@@ -143,7 +174,7 @@ All serverless / scale-to-zero, aligned with Zero-New-Ops L1/L2. To be decided l
    - Guidance: start CSV for plain tabular reports; escalate to XLSX only if formatting/formulas are actually needed (YAGNI). Trade-off triangle: open + light + rich-format → pick two.
 4. **Data-in-place rigor:** *pragmatic* (data reaches the browser tab, no download button — product-level protection) OR *strict* (not a single byte to the client → process on compute, send only pixels/results). Pragmatic fits "view as spreadsheet + charts"; strict would rule out DuckDB-WASM. UNDECIDED.
 5. **Data format for raw analytical data:** Parquet (columnar, optimal for DuckDB read/query). Avro reserved for the WAL/streaming per FABRIC.md, NOT for the view/edit layer.
-6. **Channel / front (browser plane):** **Mattermost lean** (SSO; self-hosted or cloud). Slack needs a paid Business+ plan for SSO. DECISIÓN PENDIENTE.
+6. **Channel / front (browser plane): DECIDED — Discord.** Zero-Ops (SaaS, nothing to self-host), mature interactive buttons→webhook (the floating-button→Worker pattern needs this), project structure (servers/channels/roles/subgroups, pin, markdown). Self-hosted options (Mattermost/Stoat/Matrix) rejected: self-hosting a chat only to "own conversations" is technical debt for no gain — business data already lives in R2/Turso/Git. The chat is a thin, swappable adapter.
 
 ### Data-exfiltration caveat (AI editors)
 
