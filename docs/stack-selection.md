@@ -9,17 +9,32 @@ Roles are stable; the stack is swappable. Selection pending.
 | OAS | Operational Assistant | Conversational assistant over RAG. Answers in-channel, queries docs + DB + history, runs tasks via API. Not a coding agent. |
 | CAG | Coding Agent | Writes and executes code. Covered by Kiro. |
 
-## OAS Candidates
+## OAS: Operational Assistant (DECIDED: ZeroClaw)
 
 Criteria (Prim axioms): library/binary > service, Zero-Ops, minimalism, self-hosted, token-efficient.
 
-| Candidate | Lang | Footprint | Notes |
-|-----------|------|-----------|-------|
-| ZeroClaw | Rust | 3.4 MB, <10 ms | Single binary, no deps, 22+ LLM providers. Max Zero-Ops. Basic memory. |
-| nanobot | Python | pip, no Docker | ~4k readable lines, MCP, fits Python stack. |
-| PicoClaw | Go | <10 MB, <1 s | Single binary, runs on tiny hardware. Pre-1.0. |
+| Candidate | Lang | Footprint (API mode) | MCP | Notes |
+|-----------|------|----------------------|-----|-------|
+| **ZeroClaw** | Rust | binary ~8.8 MB, **<5 MB RAM** | ✅ custom MCP servers | Single binary, no runtime deps. ~22 LLM providers (Anthropic/OpenAI/Ollama/...). Channels: Discord, Telegram, Matrix, email, voice, webhooks, CLI. Reads OpenClaw `SKILL.md`. Cryptographic receipt per tool call. **Chosen.** |
+| nanobot | Python | ~20–100 MB RAM | ✅ MCP-native | ~4k readable lines, WebUI, multi-agent. Needs a Python runtime. |
+| Hermes (Nous Research) | Python | **~2–4 GB RAM**, ~20 GB disk | ✅ included | Self-improving learning loop (writes/curates its own skills, RL on conversations), multi-agent. Powerful but heavy; the RL-on-your-conversations loop is a privacy/governance concern for fiscal/legal data. Too heavy for the current 3.7 GB VPS. |
+| PicoClaw | Go | <10 MB, <1 s | — | Single binary, tiny hardware. Pre-1.0. |
 
-Preliminary: ZeroClaw for max Zero-Ops; nanobot if auditing/modifying in Python. Verify repos before committing.
+**Decision: ZeroClaw.** Reasons, aligned with Prim axioms:
+
+1. **Max Zero-Ops / cheapest hardware:** single Rust binary, <5 MB RAM in API mode (model inference is an external API key, not local). The current OVH VPS (3.7 GB RAM) has it to spare; it also runs on a $5 VPS or a Raspberry Pi.
+2. **MCP is first-class** (not a limitation): ZeroClaw acts through tools including **custom MCP servers** (per its docs) — so the OAS RAG can be wired as an MCP server (e.g. over the R2 vector index), and it composes with the rest of the MCP stack.
+3. **Not limited in practice:** ~22 LLM providers, Discord (the decided front) + many channels, shell/browser/HTTP/hardware tools, OpenClaw-compatible `SKILL.md` ecosystem.
+4. **Governance fit:** cryptographic receipt per tool call aligns with Prim's audit/approval model (the `[AGENT - Guardian]` controls in IPO).
+
+Rejected: **Hermes** — most capable (self-improving, multi-agent) but Python + 2–4 GB RAM is too heavy for the current VPS, and its learning loop fine-tunes on conversation data, which clashes with fiscal/legal data governance. **nanobot** — solid middle ground (readable Python, MCP-native) kept as fallback if the team needs to audit/modify the agent in Python.
+
+Memory footprints are **API-mode** (inference via external provider). Running a local model (Ollama) would need 8–32+ GB RAM and is out of scope at current scale.
+
+**Open / to validate (spike before production):**
+1. ZeroClaw is young — validate Discord + RAG flow against a real deployment.
+2. **RAG wiring:** confirm how the OAS consumes the RAG brain (docs + DB + history). ZeroClaw provides the tools (MCP, HTTP); the RAG is likely served as an MCP server over the R2 vector index (see FABRIC.md `RAG/brain_index/`). Validate this path.
+3. Verify the repo/releases before pinning a version.
 
 ## CAG Memory: Coding-Agent Session Memory (DECIDED: tether over Turso)
 
