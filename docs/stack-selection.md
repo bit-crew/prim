@@ -33,8 +33,47 @@ Memory footprints are **API-mode** (inference via external provider). Running a 
 
 **Open / to validate (spike before production):**
 1. ZeroClaw is young — validate Discord + RAG flow against a real deployment.
-2. **RAG wiring:** confirm how the OAS consumes the RAG brain (docs + DB + history). ZeroClaw provides the tools (MCP, HTTP); the RAG is likely served as an MCP server over the R2 vector index (see FABRIC.md `RAG/brain_index/`). Validate this path.
-3. Verify the repo/releases before pinning a version.
+2. Verify the repo/releases before pinning a version.
+
+## OAS RAG Stack (DECIDED: AnyDoc + Turso vector, served over MCP)
+
+The OAS semantic brain — "answers in-channel, queries docs + DB + history". The
+pipeline has three pieces; each is decided below. See FABRIC.md §5–6 for the data
+classification and the incoming-documents pipeline this feeds.
+
+| Stage | Choice | Why |
+|-------|--------|-----|
+| **Ingest** (document → text) | **AnyDoc** (firecrawl/anydoc, Rust) | Converts Word/PPT/Excel/PDF/… → clean Markdown. Rust, library (no service). Feeds the editable `.md` + the intake catalog. |
+| **Embeddings** (text → vectors) | **External API** (same provider model as the LLM) | Keeps the VPS light (no local embedding model → no big RAM/GPU). Consistent with API-mode inference. |
+| **Vector index** (store + search) | **Turso native vector search** | Already the stack's DB (TDS + CAG memory). Vectors are a column next to the data; semantic search + relational filters (project, role, date) in one SQL query. No separate vector DB, no extension, no service. |
+| **Serving** | **MCP server over Turso** | ZeroClaw consumes the RAG as a custom MCP server that runs the vector query against Turso. |
+
+**Why Turso vector over LanceDB / FAISS:**
+
+| Candidate | Service? | In the stack? | Index lives in | Verdict |
+|-----------|----------|---------------|----------------|---------|
+| **Turso vector** | no (embedded) | **yes** (already the DB) | Turso (vectors + metadata + relational, one SQL query) | **Chosen** — zero new tool; `library > service`; filters + search in one query |
+| LanceDB | no (embedded) | no (new tool) | R2 (on-disk/columnar, scales past RAM) | Rejected for now: adds a tool; better only at very large document volume or if "all blobs in R2" is non-negotiable |
+| FAISS | no (embedded, cpu) | no | RAM (loads whole index) | Rejected: search-only (no metadata/persistence/filtering — you build the DB around it); in-RAM index caps on the 3.7 GB VPS as documents grow |
+
+All three are **embedded libraries, not services** (unlike Qdrant/Weaviate/Milvus/
+Pinecone, which run a daemon and were ruled out by Zero-Ops). The real axis was
+"where the index lives and how many tools": Turso wins by reusing the stack and
+answering search+filter in one query.
+
+**Consequence:** FABRIC.md's earlier "FAISS/Index in R2" is superseded — RAG
+vectors now live in **Turso**; R2 keeps the source documents, editable Markdown,
+and the intake catalog. Updated in FABRIC.md §2.
+
+**Hardware note:** footprint is API-mode (embeddings + LLM via external API). The
+VPS only stores/searches vectors in Turso — light. Running a local embedding
+model would need real RAM/GPU and is out of scope.
+
+**Open / to validate (spike before production):**
+1. Wire and test the MCP-over-Turso RAG server with ZeroClaw end-to-end.
+2. Confirm Turso vector search performance/space at the expected document volume
+   (Turso vectors are recent — same maturity caveat as the rest of the Turso
+   rewrite; fallback is LanceDB on R2 if volume outgrows it).
 
 ## CAG Memory: Coding-Agent Session Memory (DECIDED: tether over Turso)
 
