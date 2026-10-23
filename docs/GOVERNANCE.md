@@ -256,13 +256,14 @@ IdP groups / project scope) before composing the answer — otherwise the RAG co
 leak information across projects or roles. Each RAG chunk carries its scope
 (project, sensitivity) as metadata so retrieval can filter by the asker's groups.
 
-### Why NOT a mesh VPN (Tailscale) — open
+### Why NOT a mesh VPN (Tailscale) — resolved
 
-A mesh VPN (Tailscale) would be the "catch-all extra layer", and for the current
-architecture it looks **redundant**: the machine plane already uses short-lived
-SSH certs via a central CA (Cloudflare Access for Infrastructure), and Cloudflare
-Access can put services behind SSO without exposing them (Zero Trust). Data lives
-in R2 (edge), not in servers that must talk privately to each other. A mesh would
-duplicate that and add ops (against Zero-Ops). It would only pay off if many
-inter-connected per-project VPS appear. **Status: open — revisit when the VPS
-story is firmer** (see the VPS question still under discussion).
+A mesh VPN (Tailscale) would be the "catch-all extra layer", and for this
+architecture it is **redundant**: there is **one** VPS (the OAS agent), not many
+inter-connected ones — the agent reaches R2 and Turso over HTTPS, no private
+multi-VPS network to knit. The machine plane already uses short-lived SSH certs
+via a central CA (Cloudflare Access for Infrastructure), and Cloudflare Access
+fronts services with Zero-Trust SSO without exposing them. Data lives in R2
+(edge). A mesh would duplicate that and add ops (against Zero-Ops). It would only
+pay off if many inter-connected per-project VPS appear — not the current model.
+See the compute split in [stack-selection.md](./stack-selection.md#compute-split-serverless-cloudflare-vs-always-on-vps-decided).

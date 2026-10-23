@@ -75,9 +75,38 @@ model would need real RAM/GPU and is out of scope.
    (Turso vectors are recent — same maturity caveat as the rest of the Turso
    rewrite; fallback is LanceDB on R2 if volume outgrows it).
 
-## CAG Memory: Coding-Agent Session Memory (DECIDED: tether over Turso)
+## Compute split: serverless (Cloudflare) vs always-on VPS (DECIDED)
 
-**This is the memory of the coding agent (CAG), not the OAS semantic brain.** They are two distinct layers — do not conflate them:
+Two kinds of workload, two homes — the workload shape decides, not preference.
+
+| Workload | Shape | Home | Why |
+|----------|-------|------|-----|
+| On-demand services: file editing, signed-URL generation, R2 read/write, the data viewer, the data-gate | **ephemeral, per-request, scale-to-zero** | **Cloudflare Workers** | pay per use, nothing running when idle; Cloudflare is serverless-first and cheap for this |
+| The OAS agent (ZeroClaw): listening on Discord, persistent memory, answering anytime | **always-on daemon (24/7)** | **VPS (OVH)** | a permanent process is forced/expensive on Cloudflare (not its model); a minimal VPS is far cheaper for always-on. ZeroClaw is <5 MB RAM, so the cheapest VPS has it to spare |
+| Data (documents, vectors catalog, logs) | at rest | **R2** | egress-free (below) |
+| Transactional state + RAG vectors | queried | **Turso** | already the DB |
+
+**VPS provider: OVH.** At the moment OVH is cheaper than Hetzner, especially on
+**RAM and vCPU** (the metrics that matter for the agent — disk is irrelevant, the
+agent barely uses it). Any cheap VPS works since ZeroClaw is tiny; the point is
+**not Cloudflare for the always-on process.**
+
+**The R2↔VPS traffic is free.** A concern was "the agent streams data from
+Cloudflare to the VPS all the time". **R2 charges $0 for egress** (official:
+"no charges for egress bandwidth for any storage class"), so the VPS reads
+documents/vectors from R2 continuously at **no transfer cost** — unlike S3
+($0.09/GB). This is a direct payoff of the R2 decision. Turso↔VPS traffic is
+small (queries, not blobs) and partly local via embedded replicas.
+
+**Why no mesh VPN (Tailscale) — resolved.** This architecture has **one** VPS
+(the agent), not many inter-connected ones. The agent reaches R2 and Turso over
+HTTPS; there is no private multi-VPS network to knit together. The machine plane
+already uses short-lived SSH certs via a central CA, and Cloudflare Access fronts
+services with Zero-Trust SSO. A mesh would duplicate that and add ops (against
+Zero-Ops). Optional per-project compute VPS stay isolated/ephemeral; a mesh is
+reconsidered only if a real case of projects sharing private compute appears.
+
+
 
 | Layer | What it stores | Who uses it | Where it lives |
 |-------|----------------|-------------|----------------|
