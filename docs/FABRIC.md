@@ -275,7 +275,43 @@ File classified as A
 - The **original** (PDF, etc.) is kept in R2 `blob/` as **immutable evidence**;
   `url_original` never changes.
 
-### Intake catalog (Parquet in R2, `docs-intake/`)
+### Images in incoming documents (slides / docs)
+
+How AnyDoc handles images (verified): it does **not** embed them in the Markdown.
+Images render as their **alt text**, and the raw image bytes are returned
+separately on the document model (`toDocument()`), tagged with their media type.
+So AnyDoc *separates* the text (→ Markdown) from the images (→ bytes aside).
+
+For **incoming client documents** (evidence, read-only — not edited), this fits
+cleanly:
+- The **original** (`.pptx`/`.docx`) is already self-contained and kept in R2
+  `blob/` as evidence — every image is intact there. If someone needs to see a
+  slide's image, they open the original (via `url_original`).
+- The **Markdown** (text + alt-text placeholders) goes to the RAG. No base64, no
+  separate image files to manage — the Markdown stays light.
+- **Key images are described by the multimodal LLM** and that description is added
+  to the RAG as text, so "the diagram on slide 3" becomes searchable even though
+  it is an image. This runs **only when the image looks important** (a diagram,
+  chart, screenshot) — not for logos or decorative images — to avoid spending LLM
+  on noise. The classifier/heuristic decides "important vs decorative".
+- The extracted image bytes themselves are **discarded** (the original already
+  holds them); only their LLM description is kept, in the RAG.
+
+Client documents are **not edited** — they are evidence. So no editable `.md` is
+needed for them: the original in `blob/` + a read-only Markdown for RAG/consult +
+the LLM descriptions of key images is enough. (Editable Markdown applies to
+*our own* documents, not to client evidence.)
+
+### The agent returns the source URL
+
+When the OAS answers from the RAG, it must be able to **hand back the source
+`url_original`** so a human can open and verify the real document. Every RAG chunk
+carries its `url_original` (and `url_markdown` when applicable) as metadata, so the
+agent cites the source in its answer. This serves prim's governance (answers are
+verifiable, traceable to evidence) and the image case above: if the answer draws
+on a slide's content, the user can open the original slide to see the actual image.
+
+
 
 Partitioned by **date**, clustered by **project**. One row per document.
 
