@@ -116,7 +116,7 @@ and scope (company-wide vs per-project). From that, its **owning store** follows
 |---|-----------|---------|---------------|---------|--------|-------|--------------|
 | 1 | Strategic docs (vision, principles, standards, guidelines) | yes | last **approved** | human + OAS | read + RAG | company | **Git** (versions+approval) → RAG (last approved) |
 | 2 | Project docs (specs, design, decisions) | yes | last approved | human + OAS + CAG | read + RAG | project | **Git** (per project) → RAG |
-| 3 | Incoming documents (what a client sends: PDF, Excel, meeting minutes) | no (immutable once received) | all (evidence) | human + OAS | blob + RAG | project | **R2** original (evidence) + Markdown → RAG. Catalog in Parquet (§6) |
+| 3 | Incoming items (file or email: PDF, Excel, receipt, bank email, minutes) | no (original immutable once received) | all (evidence) | human + OAS | classified → routed | project | **Classified into A/B/C** (§6): A→R2 Markdown+RAG; B→`events`(Turso)/project Parquet; C→discarded. Original kept as evidence in R2 `blob/` |
 | 4 | Transactional state (events: tickets, tasks, money, project state) | yes | current | human + OAS + system | SQL | project | **Turso (TDS)** — the events table (§1b) |
 | 5 | Logs / telemetry (wide events) | no (append-only) | full history | system + analysis | analytic query | company + project | **R2** (Parquet, OLAP) + DuckDB |
 | 6 | Code / DaC / IaC | yes | last (+ git history) | human + CAG | diff/versions | project | **Git (GOP)** |
@@ -160,21 +160,108 @@ One model, partitioned by project — not a separate stack per project.
 
 ## 6. Incoming Documents Pipeline
 
-Employees drop files in the channel (Discord/Telegram). The system normalizes
-every document into prim's own format and keeps a clean, queryable catalog — no
-PDFs/binaries to maintain as the working copy.
+Employees drop files (or forward emails) in the channel (Discord/Telegram). Not
+everything that arrives is a "document to read" — the same inbound item can be a
+document, a piece of structured data, or noise. So ingest starts with a
+**classifier** that routes each item to one of three destinations.
 
-### Flow
+### Step 0 — Classifier (what is this?)
+
+Done by the **agent (OAS/ZeroClaw) with the LLM**, with a few hard rules for
+obvious cases (e.g. an email from a known bank → transaction). The LLM is used
+because routing needs context, not a fixed format. It decides the destination:
 
 ```text
-File dropped in the channel (PDF, Excel, meeting minutes, ...)
+Something arrives in the channel (file or email)
    │
-   ▼  if not Markdown → AnyDoc converts it to clean Markdown
-   ▼  original is stored in R2 blob/ as immutable evidence (url_original)
-   ▼  editable Markdown is written to R2 docs-md/<project>/<id>.md (url_markdown)
-   ▼  a row is appended to the intake catalog (Parquet, docs-intake/)
-   ▼  content is embedded (via API) and indexed in Turso (RAG)
-   ▼  the file is removed from Discord/Telegram (the channel is transport, not storage)
+   ▼  CLASSIFIER (agent/LLM + hard rules)
+   ├── A. Document to understand  → text whose value is reading/querying it
+   ├── B. Data to process         → structured facts (two sub-kinds, below)
+   └── C. Noise / ephemeral        → discarded, or turned into a reminder/task
+```
+
+### The three destinations
+
+**A. Document to understand** (contract, proposal, minutes, report):
+→ if not Markdown, **AnyDoc** converts it → editable Markdown in R2 → intake
+catalog (Parquet) → content embedded and indexed in **Turso (RAG)**. Original
+kept as immutable evidence in R2 `blob/`.
+
+**B. Data to process** — structured facts. **Two sub-kinds, different homes:**
+  - **B1 — Company event:** a fact that belongs to the company ledger/operations
+    (an invoice, a bank transaction, a payment). → extracted into the **`events`
+    table (Turso, §1b)** as one or more rows (money facts as double-entry
+    `tx_id`), then flows to the OLAP/DWH (Parquet) for accounting, reports, IPO
+    metrics. The file (PDF/photo) is kept as evidence (blob, `url`).
+  - **B2 — Project input data:** tabular data that feeds a specific project but is
+    **not** a company event (a dataset, a quotation sheet, a listing). → stored as
+    **project data** (Parquet in the project's IDS / DWH), consumed by that
+    project's processes. Not an event; no ledger posting.
+
+**C. Noise / ephemeral** (spam, trivial confirmations, chit-chat): discarded. If
+it implies an action, it becomes a **reminder/task**, not a stored document. Most
+inbound email falls here.
+
+### Why both OCR and the classifier are needed
+
+- **The classifier** is needed because the destination is **not** determined by
+  file type: a `.xlsx` can be a document (A), a company event (B1), or project
+  input (B2); an email can be anything including noise (C). Only the content +
+  context decides, so an LLM-based classifier routes it.
+- **OCR** is needed because **AnyDoc requires a real text layer** — it cannot read
+  scanned PDFs, photos of receipts, or images. A company that takes cash payments
+  will receive photographed/scanned receipts constantly. Those need OCR to turn
+  pixels into text/fields before anything else. Digital documents with signatures
+  have a text layer and skip OCR; scans/photos do not.
+
+### Cases that become events
+
+Some inbound items are not documents at all — their value is a few fields that
+must land in the **`events` table**, then accounting/DWH (destination B1):
+
+- A **bank-transaction email**: only amount, transaction number, date matter. The
+  body is not an official document — extract the fields → one event → the rest is
+  dropped (C). 
+- A **cash-payment receipt** (photo): OCR → amount/date/vendor → event (B1) +
+  photo as evidence.
+- An **invoice** (PDF/Excel): extract line-items → double-entry event(s) → DWH;
+  the file is evidence.
+
+### Extraction engine (OCR + field extraction) — decision
+
+Two needs overlap: reading pixels (OCR) and pulling structured fields. Decision by
+**criticality**, not one tool for all:
+
+- **Financial/accounting data (B1 — critical):** use a **modern multimodal LLM**
+  (e.g. Gemini-class, cheap: <$0.50 / 1000 pages) for OCR+extraction, **guarded by
+  the accounting invariant**: extracted money facts must satisfy the double-entry
+  **zero-sum per `tx_id`** (§1b). A hallucinated amount breaks the invariant and is
+  rejected/flagged for review — the invariant protects against LLM hallucination,
+  which is the known failure mode of general LLMs on structured financial docs. A
+  dedicated invoice-parsing API stays as the fallback if volume or error rate
+  demands it.
+- **Documents to understand (A — non-critical):** a multimodal LLM is more than
+  enough; perfect extraction is not required (it feeds semantic search, not the
+  ledger).
+
+> Benchmark note (2026): on clean/medium documents the accuracy gap between modern
+> multimodal LLMs and specialized OCR has largely closed, and LLMs are far cheaper;
+> but general LLMs can hallucinate on structured financial fields (fabricated
+> numbers, skipped rows). Hence: LLM + the zero-sum invariant for money, specialized
+> API only as a fallback.
+
+### Flow (destination A — document to understand)
+
+```text
+File classified as A
+   │
+   ▼  has text layer? no → OCR (LLM) to get text ; yes → use directly
+   ▼  AnyDoc converts it to clean Markdown
+   ▼  original stored in R2 blob/ as immutable evidence (url_original)
+   ▼  editable Markdown written to R2 docs-md/<project>/<id>.md (url_markdown)
+   ▼  a row appended to the intake catalog (Parquet, docs-intake/)
+   ▼  content embedded (via API) and indexed in Turso (RAG)
+   ▼  the file removed from Discord/Telegram (the channel is transport, not storage)
 ```
 
 - **AnyDoc** ([firecrawl/anydoc](https://github.com/firecrawl/anydoc), Rust):
