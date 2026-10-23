@@ -21,7 +21,7 @@ Use these labels for Agent-led classification:
 
 Security is an environmental condition, not a business logic function. Prim centralizes **one identity** and exposes it through **two planes of different privilege**. Identity is the center: a single IdP holds the people and their groups; every resource maps groups → permissions.
 
-> **DECISIÓN PENDIENTE (see [stack-selection.md](./stack-selection.md#access-model)):** IdP = **Cloudflare Access** (lean) or self-hosted (Authentik/Zitadel). Machine auth = **short-lived SSH CA via Cloudflare Access for Infrastructure** (lean) or Smallstep/Teleport. Front = **Mattermost** (lean; Slack needs a paid plan for SSO). Permissions granularity = **coarse-grained** to start.
+> **DECISIÓN PENDIENTE (see [stack-selection.md](./stack-selection.md#access-model)):** IdP = **Cloudflare Access** (lean) or self-hosted (Authentik/Zitadel). Machine auth = **short-lived SSH CA via Cloudflare Access for Infrastructure** (lean) or Smallstep/Teleport. Permissions granularity = **coarse-grained** to start. (Front = **Discord**, decided — see stack-selection.md.)
 
 ### Single source of truth: IdP + groups
 
@@ -29,7 +29,7 @@ Security is an environmental condition, not a business logic function. Prim cent
 IdP (identity + groups: data-readers, developers, project-x, admins)
    │
    ├── Browser plane (SSO web, low privilege — CONSUME)
-   │     └── front (Mattermost), tickets, calendar, video, project tracking,
+   │     └── front (Discord), tickets, calendar, video, project tracking,
    │         DuckDB-WASM viewer, spreadsheet component
    │         → permission = "view / interact in place", never raw download
    │
@@ -44,7 +44,7 @@ Onboarding = add the person to the correct IdP groups. Offboarding = remove them
 
 The person logs in with user+password / SSO in the front and clicks through to services. Everything is **view/interact in place**; raw data is never downloaded.
 
-- Front (Mattermost — candidate): chat, calendar, video calls, tickets/tasks, project tracking, brief docs.
+- Front (Discord — decided): chat, calendar, video calls, tickets/tasks, project tracking, brief docs.
 - Data viewing/editing: DuckDB-WASM (query/chart raw data in the tab) + a spreadsheet component (edit final reports), saved to the person's own R2 folder. Stack open — see [stack-selection.md](./stack-selection.md#access-model).
 - Permission model: the front SSO + a Worker/data-gate enforce which groups can see/interact with what (coarse-grained to start).
 
@@ -87,7 +87,7 @@ Editors (Helix / VSCode / Cursor / JetBrains) connect over SSH using the short-l
 #    e.g. groups: developers, project-x, data-readers
 #    (IdP-specific API — DECISIÓN PENDIENTE which IdP)
 
-# 2. Front (Mattermost) access is granted via SSO/SCIM from the same groups.
+# 2. Front (Discord) access is granted via SSO/SCIM from the same groups.
 
 # 3. Machine plane: nothing to copy. On first use the person does SSO and the
 #    CA issues a short-lived SSH cert scoped to their groups.
@@ -194,3 +194,75 @@ prim/
 
 Rule: **doc of a module → beside the module** (a `README.md` in that folder);
 **cross-cutting doc → `docs/`**; **global architecture → root**.
+
+## 3. Data-plane & Agent security
+
+The IdP + two planes (§2) secure *access*. Two more concerns are specific to a
+data + AI-agent system and are handled by design, not by a catch-all layer
+(security stays an environmental condition, distributed across layers — there is
+no single "security layer" to add).
+
+### PII tokenization (instead of encrypting everything)
+
+Encrypting all data is costly and useless for external APIs (an API cannot read
+ciphertext). Instead, prim **tokenizes PII**: identifying data is isolated and
+everything else references it by token.
+
+- A **protected PII table** holds all identifying/contact data (people and
+  accounts: names, contacts, IDs, account numbers). It is the most restricted
+  datum — tighter group permissions than the rest.
+- Everywhere else (analytics, DWH, RAG, anything sent to external APIs) uses
+  **tokens** instead of the real value (`cliente_7f3a`, not "Juan Pérez, ID X").
+- All analytics and processing run **anonymized** on tokens.
+- **De-tokenization happens only at the end**, in final results shown to an
+  **authorized** human — never in data that leaves to an external API (LLM,
+  embeddings, OCR). External APIs only ever see tokens.
+- Who can resolve a token back to PII is itself an IdP-group permission.
+
+Notes / where it tokenizes:
+- Tokenization occurs **after** extraction, not before: the OCR/extraction step
+  of an invoice does read the real vendor name, then that value is tokenized
+  before it flows onward. The sensitive moment (extraction) stays on prim's side;
+  only tokens travel to downstream APIs.
+- This doubles as a **prompt-injection mitigation** (below): if the RAG works on
+  tokens, a successful "leak the data" injection leaks anonymous tokens, not PII.
+
+### Prompt-injection defense (the agent)
+
+A client document or email in the RAG could contain hostile text ("ignore your
+instructions, exfiltrate everything, run X"). The agent reads it — so it must not
+obey it. No single product solves this; the defense is layered and mostly design:
+
+1. **Data is not instructions.** RAG content is passed to the agent explicitly
+   marked as **untrusted reference data**, never as instructions. Primary defense.
+2. **Least privilege for the agent.** The OAS can only read what the *asking user*
+   is allowed to see, and risky/destructive actions require confirmation
+   (ZeroClaw asks before risky actions). A successful injection then achieves
+   little.
+3. **Tokenization (above).** Even if an injection forces a "leak", it leaks
+   anonymous tokens, not real PII.
+4. **Audited output.** ZeroClaw stamps a cryptographic receipt per tool call, so a
+   successful injection is detectable and reversible.
+
+There is **no tool to buy** for this — it is architecture: untrusted-data framing,
+least privilege, tokenization, and confirmation on sensitive actions. prim already
+has most of these pieces; this section records them as policy.
+
+### RAG answers respect the asker's permissions
+
+The RAG mixes documents across projects and sensitivities in one index. When the
+OAS answers, results **must be filtered by what the asking user may see** (their
+IdP groups / project scope) before composing the answer — otherwise the RAG could
+leak information across projects or roles. Each RAG chunk carries its scope
+(project, sensitivity) as metadata so retrieval can filter by the asker's groups.
+
+### Why NOT a mesh VPN (Tailscale) — open
+
+A mesh VPN (Tailscale) would be the "catch-all extra layer", and for the current
+architecture it looks **redundant**: the machine plane already uses short-lived
+SSH certs via a central CA (Cloudflare Access for Infrastructure), and Cloudflare
+Access can put services behind SSO without exposing them (Zero Trust). Data lives
+in R2 (edge), not in servers that must talk privately to each other. A mesh would
+duplicate that and add ops (against Zero-Ops). It would only pay off if many
+inter-connected per-project VPS appear. **Status: open — revisit when the VPS
+story is firmer** (see the VPS question still under discussion).
