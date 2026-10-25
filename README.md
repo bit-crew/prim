@@ -38,7 +38,7 @@ The central layer for **data, services and identity**. Prim is not a VPS framewo
 
 Prim exposes everything through **two planes with different privilege**, both backed by the **same IdP**:
 
-- **Browser plane (low privilege, consume):** log in with user + password / SSO in the front (Mattermost — candidate) and click through to services: view data (DuckDB-WASM, spreadsheet component), video calls, tickets, calendar, project tracking. Interact in place; do not download raw data.
+- **Browser plane (low privilege, consume):** log in with user + password / SSO in the front (**Discord**) and click through to services: view data (DuckDB-WASM, spreadsheet component), video calls, tickets, calendar, project tracking. Interact in place; do not download raw data.
 - **Machine plane (high privilege, produce):** a developer's machine (PC/tablet/VPC) authenticates with a **short-lived SSH certificate** signed by a central CA after the same SSO login. Grants access to data for development, pushing code, and writing the employee's own data to R2. Centrally scoped and revocable (remove from the IdP group → the certificate stops being issued and expires).
 
 ## Architectural Pillars

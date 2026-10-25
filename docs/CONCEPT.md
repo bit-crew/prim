@@ -25,7 +25,7 @@ Prim is reached through **two planes of different privilege, backed by the same 
 
 > **DECISIÓN PENDIENTE (IdP):** lean = **Cloudflare Access** as the single IdP (CF already hosts R2/edge; "start simple"). Alternatives: Authentik/Zitadel (self-hosted). See [stack-selection.md](./stack-selection.md#access-model).
 > **DECISIÓN PENDIENTE (machine auth):** lean = **SSH with a short-lived CA** via **Cloudflare Access for Infrastructure** (managed). Alternative: Smallstep/Teleport (self-hosted). Optional 2nd factor: YubiKey to sign the cert (adds security, is not the identity). See [stack-selection.md](./stack-selection.md#access-model).
-> **DECISIÓN PENDIENTE (front):** lean = **Mattermost** (SSO). Slack requires a paid plan for SSO. See [stack-selection.md](./stack-selection.md#access-model).
+> **Front (browser plane): DECIDED — Discord.** Zero-Ops, mature interactive buttons→webhook, project structure. Self-hosted chat rejected (debt for no gain; data lives in R2/Turso/Git). Thin, swappable adapter. See [stack-selection.md](./stack-selection.md#access-model).
 > **DECISIÓN PENDIENTE (permissions granularity):** start **coarse-grained** (by group/prefix/schema); refine to fine-grained only when it hurts (YAGNI).
 
 ## 3. Technology Summary (The Stack)
@@ -42,7 +42,7 @@ Prim is reached through **two planes of different privilege, backed by the same 
 | **Queue/Events** | **In-DB CDC / event log** | Change log as queue ("the log is the queue"): no broker, no dual-write. Concrete engine in [stack-selection.md](./stack-selection.md#transactional-db--queue-decided-turso). |
 | **AQE (Ad-hoc)** | **DuckDB (incl. DuckDB-WASM in browser)** | Fast, in-process SQL queries on OLAP files, client- or server-side. |
 | **AQE (Batch)** | **Spark / Trino** | Large-scale batch processing on demand. |
-| **Front (browser plane)** | **DECISIÓN PENDIENTE (Mattermost lean)** | Communication + calendar + tickets + video; SSO entry point. |
+| **Front (browser plane)** | **Discord** (decided; swappable adapter) | Communication + calendar + tickets + video; floating-button→Worker entry. |
 | **OAS (Assistant)** | **TBD (see stack-selection.md)** | Operational Assistant: conversational interface layer over RAG. |
 | **CAG (Coding Agent)** | **TBD (see stack-selection.md)** | Coding Agent: writes and executes code (e.g. Kiro). |
 

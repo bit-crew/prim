@@ -32,9 +32,10 @@ identity:
   machine_ca: ""           # short-lived SSH cert authority (e.g. cf-access-infra)
   groups: [admins, developers, data-readers, data-writers]   # coarse-grained to start
 
-# Browser-plane front (SSO entry). DECISIÓN PENDIENTE (Mattermost lean).
+# Browser-plane front / chat (DECIDED: Discord). Thin, swappable adapter.
+# Carries conversations only; business data stays in R2/Turso/Git.
 front:
-  type: ""                 # e.g. mattermost
+  type: discord
 
 # Operational Assistant. Stack candidates in stack-selection.md.
 agent:

@@ -6,7 +6,7 @@ From absolute zero to a running **central core** (data + services + identity). O
 >
 > **Identity model (revised 2026-09-26):** one **IdP** holds people + groups. Two access planes share that identity — **browser** (SSO, low privilege) and **machine** (short-lived SSH cert from a central CA, high privilege). Permissions propagate from IdP groups to every resource (R2 prefixes, DWH roles, service scopes). See [GOVERNANCE.md](./GOVERNANCE.md#2-access--identity-idp--two-planes) and [stack-selection.md](./stack-selection.md#access-model).
 >
-> **DECISIÓN PENDIENTE:** IdP = **Cloudflare Access** (lean) or self-hosted. Machine CA = **CF Access for Infrastructure** (lean) or Smallstep/Teleport. Front = **Mattermost** (lean). Permissions = **coarse-grained** to start.
+> **DECISIÓN PENDIENTE:** IdP = **Cloudflare Access** (lean) or self-hosted. Machine CA = **CF Access for Infrastructure** (lean) or Smallstep/Teleport. Permissions = **coarse-grained** to start. (Front = **Discord**, decided.)
 
 ## Dependency chain
 
@@ -26,7 +26,7 @@ Purelymail ($10)
    infra@<project_name>.co
       ├─> IdP tenant (Cloudflare Access lean) → groups: admins, developers, data-readers, project-*
       ├─> <GOP> (code host) → GOP_TOKEN                    (2nd API key), SSO via IdP
-      ├─> Front (Mattermost) → SSO via IdP                 (browser plane entry)
+      ├─> Front (Discord) → SSO via IdP                   (browser plane entry)
       └─> Machine CA (CF Access for Infrastructure) → short-lived SSH certs (machine plane)
    [optional per project]
       └─> Hetzner → HCLOUD_TOKEN → VPS (compute), reached via machine-plane cert
@@ -100,7 +100,7 @@ All services authenticate against the IdP. No separate logins.
 - Create org/group; save `GOP_TOKEN`. **Second secret.** Code push uses the machine plane (Phase 4).
 
 ### 3.2 Front (browser plane)
-- Bring up the front (**Mattermost** lean) with SSO via the IdP.
+- Bring up the front (**Discord**) with SSO via the IdP.
 - This is the browser-plane entry: chat, calendar, video, tickets, project tracking.
 
 ### 3.3 Data viewing/editing (browser plane)

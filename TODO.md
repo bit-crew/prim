@@ -34,7 +34,7 @@ It is not only financial. It is the operating system of your productive life.
 ```
 prim/                          (this repo)
 ├── Operating model             → Rules (docs: fiscal, ops, governance)
-├── Channel integration         → Employee interface (Mattermost + agent)
+├── Channel integration         → Employee interface (Discord + agent)
 └── config.yaml                 → Defines the instance (DB, storage, repos)
 
 dev-setup/                        (separate repo, NOT prim)
@@ -45,7 +45,7 @@ The channel is the same for everyone. The dev environment is a separate concern 
 
 ### Employee interface — the channel (decided)
 
-The primary employee interface is the **channel / front** (browser plane, SSO — **Mattermost lean**; Slack needs a paid plan for SSO),
+The primary employee interface is the **channel / front** (browser plane — **Discord**, decided; see "Web interface" below),
 not a web portal. Per GOVERNANCE.md: employees interact in the channel and with the agent; there is **no portal** as the source of truth.
 
 | Capability | Detail | Backend-first |
@@ -80,16 +80,20 @@ The channel/apps sync with R2/Git. The user may keep temporary local files they 
 
 ### Central data model — Events as the universal fact table
 
-Decided and canonical. Everything that happens (money + non-money) is one
-append-only fact in a single **`events`** table (Activity Schema pattern);
-**`money` is a filtered view**, not a separate table. OLAP history is Parquet in
-the IDS (DuckDB), OLTP state in Turso — analytics never hit Turso.
+Decided and canonical. Everything (money + non-money) is one append-only fact in a
+single **`events`** table. **Double-entry accounting**: a money transaction = 2+
+rows sharing `tx_id` that **sum to zero per unit** (debit +, credit −); operational
+facts are single rows. **Money = integer centavos** (never float). **Units
+standardized**: COP/USD, `sec` (one time unit), `count`. **No `money` view** —
+financial facts are read by filtering `kind` (clustered). OLAP = Parquet in IDS
+(DuckDB), OLTP = Turso; analytics never hit Turso.
 
 - Schema (SoT): **[`src/schema/ddl.sql`](./src/schema/ddl.sql)** — `events`,
-  `entities`, `catalog`, `money` view.
+  `entities`, `catalog`, `accounts`. Validated (double-entry balances to zero).
 - Rationale: **[FABRIC.md](./docs/FABRIC.md)** → "Central Model: Events".
-- **Open (to fix before implementation):** exact `activity`/`kind` taxonomy
-  (seed `catalog`), single-entry signed vs double-entry, multi-currency.
+- **Open (to fix before implementation):** seed `catalog` (activity/kind list) +
+  `accounts` (chart of accounts); FX handling when a tx mixes currencies (plug a
+  gain/loss account).
 
 
 
@@ -111,7 +115,7 @@ db:        { provider: turso, api_key: "", url: "" }
 storage:   { provider: cloudflare, api_key: "", bucket: "" }
 gop:       { platform: "" }       # github | gitlab | codeberg (one, pending)
 identity:  { idp: "", machine_ca: "", groups: [admins, developers, data-readers, data-writers] }
-front:     { type: "" }           # mattermost lean
+front:     { type: discord }     # chat/adapter (decided); disposable, swappable
 agent:     { type: oas, steering: <org>/agent.git }
 llm:       { provider: "", api_key: "" }   # optional; core runs without it
 theme:
@@ -235,6 +239,118 @@ Agent integration:
 - Webhook triggers the agent when someone asks
 - The agent answers in the same channel
 - Hosting: the agent runs as a centralized SSO service (Worker/serverless preferred). A Cloudflare Worker can front it as a public proxy if the compute has no fixed public endpoint.
+
+---
+
+## Web interface — floating button + general services
+
+The browser-plane front is a **chat**, and the provider is a **thin, replaceable
+adapter**. **DECIDED: Discord.** Rationale: Discord is Zero-Ops (SaaS, nothing to
+self-host or operate), has **mature interactive buttons/components** that POST to
+an external webhook (the floating-button→Worker pattern depends on this), and
+provides project structure out of the box (servers → channels → roles →
+subgroups like `a-developers`, pinned messages, markdown).
+
+**Why not self-hosted (Mattermost/Stoat/Matrix):** the business data (events,
+reports, docs) already lives in **R2 + Turso + Git remote — in the user's own
+accounts.** The chat only carries conversations, not business data. Self-hosting a
+chat server just to "own the conversations" is technical debt for no real gain
+(it adds a running service against "library > service", and ops burden). Sovereignty
+is already satisfied where it matters: the data core. The chat is disposable and
+swappable — if Discord ever stops fitting, only the thin adapter is rewritten.
+
+On top of the chat sits a **floating button** (persistent in the UI, not a
+per-message button) that opens a menu of **general services**.
+
+**Key principle: the services are general/cross-cutting, not per-project.** A
+project is only the *context* from which a service is invoked; the service itself
+is the same for everyone. This keeps the services reusable and the chat a thin
+layer.
+
+### The pattern (chat-agnostic core)
+
+```
+[Floating button in chat]  →  [Cloudflare Worker (serverless)]  →  [R2 / Turso]
+       (thin adapter)              (the reusable service core)
+                                        │ (only when CF can't cover it)
+                                        ▼
+                          [external provider: Jitsi video link]
+```
+
+**Self-host principle: the ONLY self-hosted piece is the database (Turso).** No
+self-hosted chat, no self-hosted calendar server (CalDAV/RustiCal/Radicale all
+ruled out). Calendar and tickets are **`events` + a view in Discord**, not a
+separate service. R2 is managed storage (Cloudflare), not something operated.
+
+- **Services run serverless on Cloudflare** (Workers + R2 + Turso). This is the
+  reusable core, identical for any chat provider.
+- **The button is a thin adapter** — it just fires the Worker. Rewritten per chat
+  provider (~a few lines); the service behind it never changes. Swap chat → rewrite
+  only the adapter, not the services.
+- **External providers** only where Cloudflare does not fit and no self-host is
+  needed: **video calls = Jitsi Meet link** (generate a room, paste the link in
+  Discord — nothing to operate). Calendar is NOT external — it is `events`.
+
+### Floating button menu (general services)
+
+| Service | What it does | Runs on |
+|---------|-------------|---------|
+| **Calendar** | Schedule in-person/video meetings as **`events`** (`activity='meeting_scheduled'`, `feature_json={start,end,participants[],jitsi_link}`); availability & "who/when to invite" = query over future meeting events; **max-hours-per-profile** limit (per IPO focus-protection) = query. Viewed in Discord. **No CalDAV, no calendar server** — not synced to the phone's native calendar (lives in Discord). | Worker + Turso (events) |
+| **Tickets** | Create tickets as **`events`** (`ticket_opened`/`ticket_assigned`/`ticket_closed`); assignee is a field in `feature_json`; a person's **task view** = query of open tickets where `assignee=them`. Viewed in Discord. | Worker + Turso (events) |
+| **Agent (OAS)** | Ask the assistant (e.g. request vacation, check payroll, file leave) | OAS binary |
+| **Project state (`+`)** | Optional button: project status + indicators (budget spent vs available, a traffic-light/indicator). Computed from `events` (financial `kind`) filtered by `project_id` | Worker + DuckDB over R2 |
+
+**Everything is `events`.** Calendar, tickets, meetings, payments, workdays — one
+append-only table, viewed through Discord. The only external piece is the Jitsi
+link for video. The only self-hosted piece is Turso (the DB).
+
+### No prefab platforms — services are rows + queries
+
+Decided: do **not** adopt a prefab tickets/tasks/calendar platform (Vikunja,
+Taskwarrior, CalDAV servers, etc.). Every such product brings its **own DB + own
+server** → a second source of truth and a service to operate, both against the
+axioms. Since storage is already ours (the `events` table), a platform has nothing
+left to give but UI. The realistic (small) work:
+- **Typed write functions** that append a well-shaped row (`createTicket`,
+  `createTask`, `createReminder(at:T)`, `createMeeting(rrule?)`).
+- **Query views** over `events` folding the log into current state (open tickets,
+  today's tasks, upcoming meetings).
+- Import exactly **one logic library**: a recurrence engine (**`rrule`**, Rust) for
+  calendar repetition — store the rule once, expand occurrences at read time (do
+  not materialize every occurrence as rows).
+- **Reminders ("do X at time T")** = **Cloudflare Durable Object Alarms** (store
+  pending reminders in the DB; one self-rescheduling alarm fires what is due). No
+  always-on server; fits "self-host only the DB".
+- **Video** = Discord/Telegram native (or Jitsi link). Nothing to build.
+
+### In-chat rich content (opens visual editors)
+
+Clicking content in a message opens a **visual viewer** (data stays in R2;
+compute in Cloudflare — only pixels/interaction to the client):
+- **Table data link** → visual table viewer with a **pencil** to enter edit mode +
+  save (back to R2). (Spreadsheet component OPEN — see stack-selection.md.)
+- **Markdown doc** → markdown viewer + edit + save (normally repo/Git docs, may be
+  in R2).
+- **Markdown pasted into chat** → rendered inline (native in the chat provider).
+- **Important message** → pinnable (native).
+
+### What is "connect tools" vs "own development" (honest split)
+
+- **Low effort (connect existing):** chat with channels/subgroups (e.g.
+  `a-developers`), pin, markdown render, bots, interactive buttons. Native to
+  Discord.
+- **Own development (the Prim value):** the services the buttons open — table/
+  markdown editors over R2, project-state dashboard, calendar rules, task view.
+  Mostly already listed as candidates (Pages + DuckDB-WASM + Worker + R2).
+- The chat is ~20% (easy, replaceable); the serverless services are ~80% (the
+  reusable core).
+
+### Open decisions (web interface)
+
+- [x] Chat provider — **Discord** (adapter target; disposable/swappable).
+- [x] Calendar — **`events` + Discord view**, no CalDAV/calendar server (self-host only the DB). Not synced to native phone calendars.
+- [x] Video — **Jitsi Meet link** posted in Discord (nothing to operate).
+- [ ] Spreadsheet component + report format (upstream OPEN, see stack-selection.md).
 
 ---
 
