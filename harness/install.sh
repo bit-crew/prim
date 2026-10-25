@@ -1,25 +1,25 @@
 #!/bin/sh
-# install.sh - bootstrap for prim-skills.
+# install.sh - bootstrap for the Harness component (agent skills + instructions).
 #
-# Downloads the prebuilt `prim-skills-install` binary (published by GitHub
-# Actions in the "latest" release), verifies its sha256, and runs it. The binary
-# installs the agent-agnostic skills (own + external) into ~/.agents/skills,
-# which Pi scans.
+# Downloads the prebuilt `harness-install` binary (published by GitHub Actions
+# in the "latest" release of bit-crew/prim), verifies its sha256, and runs it.
+# The binary installs the agent-agnostic skills (own + external) into
+# ~/.agents/skills, which Pi scans.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/bit-crew/prim-skills/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/harness/install.sh | sh
 #
 # Pass `update` to update external skills:
-#   curl -fsSL .../install.sh | sh -s -- update
+#   curl -fsSL .../harness/install.sh | sh -s -- update
 
 set -eu
 
-REPO="bit-crew/prim-skills"
+REPO="bit-crew/prim"
 RELEASE_TAG="latest"
 BASE_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
 
-log() { printf '\033[1;32m[prim-skills]\033[0m %s\n' "$1"; }
-err() { printf '\033[1;31m[prim-skills]\033[0m %s\n' "$1" >&2; }
+log() { printf '\033[1;32m[harness]\033[0m %s\n' "$1"; }
+err() { printf '\033[1;31m[harness]\033[0m %s\n' "$1" >&2; }
 
 asset_suffix() {
     _os="$(uname -s)"
@@ -38,14 +38,14 @@ asset_suffix() {
 command -v curl >/dev/null 2>&1 || { err "'curl' no esta instalado."; exit 1; }
 
 suffix="$(asset_suffix)" || exit 1
-bin_url="${BASE_URL}/prim-skills-install-${suffix}"
+bin_url="${BASE_URL}/harness-install-${suffix}"
 sum_url="${bin_url}.sha256"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-bin="${tmp}/prim-skills-install"
+bin="${tmp}/harness-install"
 
-log "Descargando prim-skills-install (${suffix})..."
+log "Descargando harness-install (${suffix})..."
 curl -4 -fsSL -o "$bin" "$bin_url" || { err "no se pudo descargar el binario."; exit 1; }
 
 # Integrity check (non-fatal if no sha256sum/shasum).
@@ -68,6 +68,6 @@ else
 fi
 
 chmod +x "$bin"
-log "Ejecutando prim-skills-install ${*}..."
+log "Ejecutando harness-install ${*}..."
 "$bin" "$@"
 log "Listo."

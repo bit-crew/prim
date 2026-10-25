@@ -27,8 +27,10 @@ const GREEN: &str = "\x1b[1;32m";
 const RED: &str = "\x1b[1;31m";
 const RESET: &str = "\x1b[0m";
 
-/// This content repo, cloned at install time to get the OWN skills.
-const SKILLS_REPO: &str = "https://github.com/bit-crew/prim-skills.git";
+/// The monorepo, cloned (sparse) at install time to get the OWN skills.
+const SKILLS_REPO: &str = "https://github.com/bit-crew/prim.git";
+/// Subpath inside the monorepo holding this component's skills.
+const SKILLS_SUBPATH: &str = "harness/skills";
 
 /// External skills installed from source via the `skills` CLI.
 /// (repo, skill-name-or-"*")
@@ -93,14 +95,11 @@ fn run_uninstall() -> io::Result<()> {
     let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
     let dest = agents_skills_dir(&home);
 
-    // Own skills: discover names from a shallow clone, remove matching dirs.
+    // Own skills: discover names from a sparse clone, remove matching dirs.
     let tmp = std::env::temp_dir().join(format!("prim-skills-rm-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    if run_ok(
-        "git",
-        &["clone", "--depth", "1", SKILLS_REPO, tmp.to_str().unwrap()],
-    ) {
-        if let Ok(entries) = std::fs::read_dir(tmp.join("skills")) {
+    if sparse_clone(SKILLS_REPO, SKILLS_SUBPATH, &tmp) {
+        if let Ok(entries) = std::fs::read_dir(tmp.join(SKILLS_SUBPATH)) {
             for entry in entries.filter_map(|e| e.ok()) {
                 if entry.path().is_dir() {
                     let target = dest.join(entry.file_name());
@@ -142,15 +141,12 @@ fn agents_skills_dir(home: &Path) -> PathBuf {
 fn install_own_skills(dest: &Path) -> io::Result<()> {
     let tmp = std::env::temp_dir().join(format!("prim-skills-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    log("Clonando prim-skills (skills propias)...");
-    if !run_ok(
-        "git",
-        &["clone", "--depth", "1", SKILLS_REPO, tmp.to_str().unwrap()],
-    ) {
-        err("no se pudo clonar prim-skills; se omiten las skills propias.");
+    log("Clonando prim (skills propias, sparse)...");
+    if !sparse_clone(SKILLS_REPO, SKILLS_SUBPATH, &tmp) {
+        err("no se pudo clonar prim; se omiten las skills propias.");
         return Ok(());
     }
-    let from_root = tmp.join("skills");
+    let from_root = tmp.join(SKILLS_SUBPATH);
     let mut n = 0;
     if let Ok(entries) = std::fs::read_dir(&from_root) {
         for entry in entries.filter_map(|e| e.ok()) {
@@ -226,6 +222,38 @@ fn run_npx(args: &[&str]) -> bool {
 fn run_ok(program: &str, args: &[&str]) -> bool {
     Command::new(program)
         .args(args)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Sparse-clone only `subpath` of the monorepo into `tmp`. Avoids downloading
+/// the whole repo to read one subdirectory. Returns true on success; on success
+/// the subdir is at `tmp/<subpath>`.
+fn sparse_clone(repo: &str, subpath: &str, tmp: &Path) -> bool {
+    let tmp_s = match tmp.to_str() {
+        Some(s) => s,
+        None => return false,
+    };
+    run_ok(
+        "git",
+        &[
+            "clone",
+            "--depth",
+            "1",
+            "--filter=blob:none",
+            "--sparse",
+            repo,
+            tmp_s,
+        ],
+    ) && run_ok_in(tmp, "git", &["sparse-checkout", "set", subpath])
+}
+
+/// Run a command with a given working directory.
+fn run_ok_in(cwd: &Path, program: &str, args: &[&str]) -> bool {
+    Command::new(program)
+        .args(args)
+        .current_dir(cwd)
         .status()
         .map(|s| s.success())
         .unwrap_or(false)

@@ -17,10 +17,10 @@
 
 set -eu
 
-REPO="bit-crew/devlab"
+REPO="bit-crew/prim"
 RELEASE_TAG="latest"
 BASE_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
-RAW_URL="https://raw.githubusercontent.com/${REPO}/main/install.sh"
+RAW_URL="https://raw.githubusercontent.com/${REPO}/main/rig/install.sh"
 
 log() { printf '\033[1;32m[install]\033[0m %s\n' "$1"; }
 err() { printf '\033[1;31m[install]\033[0m %s\n' "$1" >&2; }
@@ -75,14 +75,14 @@ install_local() {
     command -v curl >/dev/null 2>&1 || { err "'curl' no esta instalado."; exit 1; }
 
     _suffix="$(asset_suffix)" || exit 1
-    _bin_url="${BASE_URL}/devlab-install-${_suffix}"
+    _bin_url="${BASE_URL}/rig-install-${_suffix}"
     _sum_url="${_bin_url}.sha256"
 
     _tmp="$(mktemp -d)"
     trap 'rm -rf "$_tmp"' EXIT
-    _bin="${_tmp}/devlab-install"
+    _bin="${_tmp}/rig-install"
 
-    log "Descargando devlab-install (${_suffix})..."
+    log "Descargando rig-install (${_suffix})..."
     curl -4 -fsSL -o "$_bin" "$_bin_url" || { err "no se pudo descargar el binario."; exit 1; }
 
     # Verificacion de integridad (no fatal si no hay sha256sum/shasum).
@@ -107,7 +107,7 @@ install_local() {
     fi
 
     chmod +x "$_bin"
-    log "Ejecutando devlab-install --profile ${_profile}..."
+    log "Ejecutando rig-install --profile ${_profile}..."
     DEVLAB_PROFILE="$_profile" "$_bin" --profile "$_profile"
     log "Instalacion local completa (perfil ${_profile})."
 }

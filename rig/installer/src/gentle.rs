@@ -25,8 +25,10 @@ fn note(msg: &str) {
     println!("{BLUE}[gentle]{RESET} {msg}");
 }
 
-/// Content repo cloned at install time (for the instructions / steering).
-const SKILLS_REPO: &str = "https://github.com/bit-crew/prim-skills.git";
+/// The monorepo, cloned (sparse) at install time for the instructions / steering.
+const SKILLS_REPO: &str = "https://github.com/bit-crew/prim.git";
+/// Subpath in the monorepo holding the agent instructions.
+const INSTRUCTIONS_SUBPATH: &str = "harness/instructions";
 
 /// Pi's agent config dir, where AGENTS.md lives.
 fn pi_agent_dir(home: &Path) -> PathBuf {
@@ -62,30 +64,47 @@ pub fn curate() {
 fn install_skills_via_prim() {
     note("Instalando skills via prim-skills-install...");
     let Some(script) =
-        curl_text("https://raw.githubusercontent.com/bit-crew/prim-skills/main/install.sh")
+        curl_text("https://raw.githubusercontent.com/bit-crew/prim/main/harness/install.sh")
     else {
-        note("no se pudo descargar install.sh de prim-skills (continuo)");
+        note("no se pudo descargar install.sh de harness (continuo)");
         return;
     };
     if sh_stdin(&script, &[]) {
-        note("Skills instaladas via prim-skills.");
+        note("Skills instaladas via harness-install.");
     } else {
-        note("fallo prim-skills-install (continuo)");
+        note("fallo harness-install (continuo)");
     }
 }
 
-/// Clone prim-skills into a fresh temp dir. Returns the clone path on success.
+/// Sparse-clone only the instructions subpath of the monorepo into a fresh temp
+/// dir. Returns the clone path on success (instructions at <path>/harness/instructions).
 fn clone_content() -> Option<PathBuf> {
-    let base = std::env::temp_dir().join(format!("prim-skills-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!("prim-content-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
-    note("Clonando prim-skills (contenido agnostico)...");
-    let ok = Command::new("git")
-        .args(["clone", "--depth", "1", SKILLS_REPO])
+    note("Clonando prim (instrucciones, sparse)...");
+    let cloned = Command::new("git")
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            "--filter=blob:none",
+            "--sparse",
+            SKILLS_REPO,
+        ])
         .arg(&base)
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    if ok {
+    if !cloned {
+        return None;
+    }
+    let sparse = Command::new("git")
+        .args(["sparse-checkout", "set", INSTRUCTIONS_SUBPATH])
+        .current_dir(&base)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if sparse {
         Some(base)
     } else {
         None
@@ -97,9 +116,9 @@ fn clone_content() -> Option<PathBuf> {
 fn append_our_instructions(content: &Path, agent_dir: &Path) {
     // Order matters; mirror manifest.toml always-on instructions.
     let files = ["tech.md", "code-conventions.md", "odd.md"];
-    let mut body = String::from("\n<!-- Managed by devlab-install. Source: prim-skills -->\n\n");
+    let mut body = String::from("\n<!-- Managed by rig-install. Source: prim/harness -->\n\n");
     for f in files {
-        match std::fs::read_to_string(content.join("instructions").join(f)) {
+        match std::fs::read_to_string(content.join(INSTRUCTIONS_SUBPATH).join(f)) {
             Ok(raw) => {
                 let text = strip_frontmatter(&raw);
                 let text = text.replace("<!-- ODD_MEMORY -->\n", ODD_MEMORY_STEPS);

@@ -14,7 +14,7 @@
 //! else prompt. Non-interactive when stdin is not a TTY.
 
 use std::io::{self, IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod binaries;
@@ -376,25 +376,29 @@ fn ensure_chezmoi() -> io::Result<()> {
 // --- dotfiles via chezmoi ---------------------------------------------------
 
 /// Apply dotfiles with chezmoi, source = <repo>/home. Passes profile + git
-/// Apply dotfiles with chezmoi. The dotfiles live in devlab/home, which is not
-/// present when the binary runs standalone, so we shallow-clone devlab to a temp
-/// dir, apply from <clone>/home, and remove the clone. Passes profile + git
-/// identity as prompt values (matching home/.chezmoi.toml.tmpl prompt texts).
+/// Apply dotfiles with chezmoi. The dotfiles live in the monorepo at rig/home,
+/// which is not present when the binary runs standalone, so we sparse-clone just
+/// that subpath from prim to a temp dir, apply from <clone>/rig/home, and remove
+/// the clone. Passes profile + git identity as prompt values (matching
+/// rig/home/.chezmoi.toml.tmpl prompt texts).
 fn apply_dotfiles(profile: Profile) -> io::Result<()> {
-    let tmp = std::env::temp_dir().join(format!("devlab-dotfiles-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("prim-dotfiles-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    log("Clonando devlab para los dotfiles (home/)...");
+    log("Clonando prim para los dotfiles (rig/home, sparse)...");
     run_cmd(
         "git",
         &[
             "clone",
             "--depth",
             "1",
-            "https://github.com/bit-crew/devlab.git",
+            "--filter=blob:none",
+            "--sparse",
+            "https://github.com/bit-crew/prim.git",
             tmp.to_str().unwrap(),
         ],
     )?;
-    let source = tmp.join("home");
+    run_cmd_in(&tmp, "git", &["sparse-checkout", "set", "rig/home"])?;
+    let source = tmp.join("rig").join("home");
 
     let git_name = capture("git", &["config", "--global", "user.name"])
         .map(|s| s.trim().to_string())
@@ -438,6 +442,23 @@ fn apply_dotfiles(profile: Profile) -> io::Result<()> {
 fn run_cmd(program: &str, args: &[&str]) -> io::Result<()> {
     let status = Command::new(program)
         .args(args)
+        .status()
+        .map_err(|e| io::Error::other(format!("no se pudo ejecutar '{program}': {e}")))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "'{program}' fallo (codigo {:?})",
+            status.code()
+        )))
+    }
+}
+
+/// Like `run_cmd` but with a working directory (for e.g. git sparse-checkout).
+fn run_cmd_in(cwd: &Path, program: &str, args: &[&str]) -> io::Result<()> {
+    let status = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
         .status()
         .map_err(|e| io::Error::other(format!("no se pudo ejecutar '{program}': {e}")))?;
     if status.success() {
