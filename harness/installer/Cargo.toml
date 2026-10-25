@@ -1,0 +1,13 @@
+[package]
+name = "harness-install"
+version = "0.1.0"
+edition = "2021"
+description = "Harness installer: installs agent-agnostic skills (own + external) into ~/.agents/skills"
+license = "MIT"
+
+[[bin]]
+name = "harness-install"
+path = "src/main.rs"
+
+[dependencies]
+dirs = "5.0"

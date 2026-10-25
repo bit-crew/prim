@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metrics Dashboard</title>
+    <style>
+        :root {
+            --bg: #FBFBFB;
+            --text: #111111;
+            --secondary: #666666;
+            --accent: #F0F0F0;
+            --border: #111111;
+            --border-light: #EEEEEE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem;
+            line-height: 1.5;
+        }
+        
+        h1, h2, h3 {
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.2rem; }
+        h3 { font-size: 1rem; }
+        
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .kpi-card {
+            border: 1px solid var(--border-light);
+            background: var(--accent);
+            padding: 1.5rem;
+        }
+        
+        .kpi-label {
+            color: var(--secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        
+        .kpi-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        
+        .metric-row {
+            margin: 1rem 0;
+        }
+        
+        .metric-label {
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .progress-wrapper {
+            background: var(--border-light);
+            height: 1.5rem;
+            position: relative;
+        }
+        
+        .progress-bar {
+            background: var(--text);
+            height: 100%;
+            display: block;
+        }
+        
+        .databar-wrapper {
+            background: var(--border-light);
+            height: 1.5rem;
+            width: 100%;
+        }
+        
+        .databar {
+            background: var(--text);
+            height: 100%;
+        }
+        
+        meter {
+            width: 100%;
+            height: 1.5rem;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        meter::-webkit-meter-bar {
+            background: var(--border-light);
+            border: none;
+        }
+        
+        meter::-webkit-meter-optimum-value {
+            background: var(--text);
+        }
+        
+        gauge {
+            display: inline-block;
+            width: 100%;
+            max-width: 200px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+        
+        th, td {
+            border: 1px solid var(--border-light);
+            padding: 0.75rem;
+            text-align: left;
+            font-size: 0.85rem;
+        }
+        
+        th {
+            background: var(--accent);
+            font-weight: 700;
+        }
+        
+        .chart-container {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            border: 1px solid var(--border-light);
+        }
+        
+        .legend {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .legend-color {
+            width: 1rem;
+            height: 1rem;
+            background: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <h1>METRICS DASHBOARD</h1>
+    
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-label">Total Requests</div>
+            <div class="kpi-value">12,847</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Success Rate</div>
+            <div class="kpi-value">98.2%</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Avg Latency</div>
+            <div class="kpi-value">142ms</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Active Users</div>
+            <div class="kpi-value">847</div>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <h2>PROGRESS BARS (native &lt;progress&gt;)</h2>
+        <div class="metric-row">
+            <div class="metric-label"><span>CPU Usage</span><span>78%</span></div>
+            <progress value="78" max="100"></progress>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label"><span>Memory Usage</span><span>62%</span></div>
+            <progress value="62" max="100"></progress>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label"><span>Disk I/O</span><span>45%</span></div>
+            <progress value="45" max="100"></progress>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <h2>DATA BARS (div + width)</h2>
+        <div class="metric-row">
+            <div class="metric-label"><span>Request Trend</span><span>+23%</span></div>
+            <div class="databar-wrapper"><div class="databar" style="width: 73%;"></div></div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label"><span>Error Rate</span><span>-8%</span></div>
+            <div class="databar-wrapper"><div class="databar" style="width: 32%;"></div></div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label"><span>Cache Hit</span><span>91%</span></div>
+            <div class="databar-wrapper"><div class="databar" style="width: 91%;"></div></div>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <h2>TABLE</h2>
+        <table>
+            <tr><th>Endpoint</th><th>Count</th><th>Latency</th><th>Status</th></tr>
+            <tr><td>/api/users</td><td>3,421</td><td>89ms</td><td>OK</td></tr>
+            <tr><td>/api/data</td><td>2,847</td><td>134ms</td><td>OK</td></tr>
+            <tr><td>/api/upload</td><td>892</td><td>245ms</td><td>OK</td></tr>
+        </table>
+    </div>
+</body>
+</html>

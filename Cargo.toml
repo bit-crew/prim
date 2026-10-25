@@ -1,0 +1,26 @@
+# Prim monorepo — Cargo workspace.
+# Root package = the orchestrator (the `prim` umbrella: install selector).
+# Members = each component's installer (rig, harness; core when it has code).
+[package]
+name = "prim"
+version = "0.1.0"
+edition = "2021"
+description = "Prim — one-command bootstrap for the operating core, dev environment and agent harness"
+license = "MIT"
+
+[[bin]]
+name = "prim"
+path = "src/main.rs"
+
+[dependencies]
+dirs = "5.0"
+
+[workspace]
+members = ["rig/installer", "harness/installer"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

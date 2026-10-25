@@ -1,0 +1,96 @@
+{{ if eq .profile "vps" -}}
+# zenbones "dark warm" para Helix. Colores desde la paleta central
+# (.chezmoidata.yaml); consistente con herdr y lazygit.
+# Base: zenbones_dark (MIT, Michael Chris Lopez). Resalta por contraste, no color.
+
+# --- UI ---------------------------------------------------------------------
+"ui.background" = { fg = "fg", bg = "bg" }
+"ui.text" = { fg = "fg" }
+"ui.text.focus" = { fg = "fg", modifiers = ["bold"] }
+"ui.menu" = { fg = "fg", bg = "bg_dim" }
+"ui.menu.selected" = { fg = "fg", bg = "bg_sel", modifiers = ["bold"] }
+"ui.popup" = { fg = "fg", bg = "bg_dim" }
+"ui.help" = { fg = "fg", bg = "bg_dim" }
+"ui.window" = { fg = "bg_sel" }
+"ui.linenr" = { fg = "fg_dim" }
+"ui.linenr.selected" = { fg = "orange", modifiers = ["bold"] }
+"ui.gutter" = { bg = "bg" }
+"ui.cursor" = { fg = "bg", bg = "fg" }
+"ui.cursor.primary" = { fg = "bg", bg = "orange" }
+"ui.cursor.match" = { fg = "yellow", bg = "bg_sel", modifiers = ["bold"] }
+"ui.selection" = { bg = "bg_sel" }
+"ui.selection.primary" = { bg = "bg_sel" }
+"ui.statusline" = { fg = "fg", bg = "bg_dim" }
+"ui.statusline.inactive" = { fg = "fg_dim", bg = "bg_dim" }
+"ui.statusline.normal" = { fg = "bg", bg = "fg", modifiers = ["bold"] }
+"ui.statusline.insert" = { fg = "bg", bg = "green", modifiers = ["bold"] }
+"ui.statusline.select" = { fg = "bg", bg = "orange", modifiers = ["bold"] }
+"ui.virtual.ruler" = { bg = "bg_dim" }
+"ui.virtual.whitespace" = { fg = "bg_sel" }
+"ui.virtual.indent-guide" = { fg = "bg_sel" }
+"ui.virtual.inlay-hint" = { fg = "fg_dim" }
+
+# --- Sintaxis (zenbones: poco color, mucho contraste) -----------------------
+"comment" = { fg = "fg_dim", modifiers = ["italic"] }
+"variable" = { fg = "fg" }
+"variable.builtin" = { fg = "purple" }
+"variable.parameter" = { fg = "fg" }
+"variable.other.member" = { fg = "fg" }
+"constant" = { fg = "orange" }
+"constant.numeric" = { fg = "orange" }
+"constant.character" = { fg = "green" }
+"constant.character.escape" = { fg = "cyan" }
+"string" = { fg = "green" }
+"type" = { fg = "yellow" }
+"type.builtin" = { fg = "yellow" }
+"constructor" = { fg = "yellow" }
+"function" = { fg = "fg", modifiers = ["bold"] }
+"function.builtin" = { fg = "fg", modifiers = ["bold"] }
+"function.macro" = { fg = "orange" }
+"keyword" = { fg = "purple" }
+"keyword.control" = { fg = "purple" }
+"keyword.operator" = { fg = "fg" }
+"operator" = { fg = "fg" }
+"punctuation" = { fg = "fg_dim" }
+"punctuation.delimiter" = { fg = "fg_dim" }
+"label" = { fg = "orange" }
+"tag" = { fg = "blue" }
+"namespace" = { fg = "yellow" }
+"special" = { fg = "cyan" }
+
+# --- Markup (prosa) ---------------------------------------------------------
+"markup.heading" = { fg = "orange", modifiers = ["bold"] }
+"markup.bold" = { modifiers = ["bold"] }
+"markup.italic" = { modifiers = ["italic"] }
+"markup.link.url" = { fg = "blue", modifiers = ["underlined"] }
+"markup.link.text" = { fg = "orange" }
+"markup.raw" = { fg = "green" }
+"markup.list" = { fg = "purple" }
+
+# --- Diagnosticos / diff ----------------------------------------------------
+"diagnostic.error" = { underline = { color = "red", style = "curl" } }
+"diagnostic.warning" = { underline = { color = "yellow", style = "curl" } }
+"diagnostic.info" = { underline = { color = "blue", style = "curl" } }
+"diagnostic.hint" = { underline = { color = "cyan", style = "curl" } }
+"error" = { fg = "red" }
+"warning" = { fg = "yellow" }
+"info" = { fg = "blue" }
+"hint" = { fg = "cyan" }
+"diff.plus" = { fg = "green" }
+"diff.delta" = { fg = "yellow" }
+"diff.minus" = { fg = "red" }
+
+[palette]
+bg = "{{ .palette.bg }}"
+bg_dim = "{{ .palette.bg_dim }}"
+bg_sel = "{{ .palette.bg_sel }}"
+fg = "{{ .palette.fg }}"
+fg_dim = "{{ .palette.fg_dim }}"
+orange = "{{ .palette.orange }}"
+yellow = "{{ .palette.yellow }}"
+purple = "{{ .palette.purple }}"
+red = "{{ .palette.red }}"
+green = "{{ .palette.green }}"
+blue = "{{ .palette.blue }}"
+cyan = "{{ .palette.cyan }}"
+{{- end }}

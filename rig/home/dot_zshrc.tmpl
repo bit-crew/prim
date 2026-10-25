@@ -1,0 +1,52 @@
+{{/* ~/.zshrc generado por chezmoi. Perfil: {{ .profile }} */}}
+# ============================================
+#  zsh - perfil: {{ .profile }}
+# ============================================
+
+# Completion
+autoload -Uz compinit && compinit
+
+# Historia
+HISTSIZE=10000
+SAVEHIST=10000
+HISTFILE="$HOME/.zsh_history"
+setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+
+# PATH: binarios de usuario y toolchains
+export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.local/go/bin:$HOME/.cargo/bin:$HOME/go/bin:$PATH"
+
+# rustup / cargo
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
+# Aliases
+alias lg="lazygit"
+alias ls="eza"
+alias cat="bat"
+alias ..="cd .."
+alias db="lazysql"
+
+# Editor por defecto
+export EDITOR="hx"
+export VISUAL="hx"
+# Runtime de Helix (queries de resaltado + grammars). El binario de Helix se
+# instala con su runtime aqui; sin esta variable no encuentra las highlight queries.
+export HELIX_RUNTIME="$HOME/.local/share/helix-runtime"
+
+# Integraciones (una linea = un eval, sin loops)
+command -v starship >/dev/null && eval "$(starship init zsh)"
+command -v zoxide   >/dev/null && eval "$(zoxide init zsh)"
+command -v atuin    >/dev/null && eval "$(atuin init zsh)"
+command -v direnv   >/dev/null && eval "$(direnv hook zsh)"
+{{ if eq .profile "vps" }}
+# Anuncia truecolor para que los colores hex del tema (zenbones warm) se vean
+# fieles sin depender de que la app SSH del cliente (tablet) lo declare.
+export COLORTERM=truecolor
+
+# Herdr como terminal por defecto del VPS. Toda sesion interactiva (Moshi, SSH,
+# consola) arranca o se adjunta a herdr. HERDR_ENV lo exporta herdr dentro de sus
+# panes; la guarda evita anidar herdr dentro de herdr. exec reemplaza zsh para que
+# al salir de herdr la sesion termine limpia.
+if [[ -o interactive ]] && [[ -z "$HERDR_ENV" ]] && command -v herdr >/dev/null; then
+  exec herdr
+fi
+{{ end }}

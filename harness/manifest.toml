@@ -1,0 +1,90 @@
+# Canonical agent definition — AGENT-AGNOSTIC.
+# This is the single source of truth. Adapters translate it to each agent's
+# native format (Pi today; Kiro/Claude/etc. later without touching this).
+#
+# Three canonical axes (mirrors gentle-ai's design):
+#   - CONTENT: instructions + skills + roles live here, neutral.
+#   - STRATEGY/PATHS: owned by each adapter (WHERE + HOW).
+#   - CAPABILITIES: each adapter declares what it supports (to degrade).
+
+schema = "v1"
+
+# Always-on instructions (what Kiro calls "steering"). Order matters: adapters
+# that use a single instructions file concatenate these in order.
+[[instructions]]
+id = "tech"
+file = "instructions/tech.md"
+always = true
+
+[[instructions]]
+id = "code-conventions"
+file = "instructions/code-conventions.md"
+always = true
+
+[[instructions]]
+id = "odd"
+file = "instructions/odd.md"
+always = true
+
+[[instructions]]
+id = "visual-style"
+file = "instructions/visual-style.md"
+# Not always-on in Kiro (fileMatch on *.html/*.md). Adapters without a
+# conditional-include capability degrade this to always-on or omit it.
+always = false
+match = ["*.html", "*.md"]
+
+# Roles / subagents. tools are canonical verbs; each adapter maps them to its
+# own permission/tools model.
+[[roles]]
+id = "architect"
+name = "Architect"
+description = "Understands complete need, generates specs, designs system (technologies, standards)"
+tools = ["read", "write", "glob", "grep"]
+skills = ["architect-decisions"]
+instructions = ["tech", "code-conventions", "visual-style"]
+
+[[roles]]
+id = "developer"
+name = "Developer"
+description = "Implements code following architect specs (TDD/SDD implicit)"
+tools = ["read", "write", "edit", "glob", "grep", "bash"]
+skills = ["project-setup", "migration", "logging", "testing"]
+instructions = ["tech", "code-conventions"]
+
+[[roles]]
+id = "devops"
+name = "DevOps"
+description = "Handles CI/CD, hooks, boilerplates and best practices"
+tools = ["read", "write", "glob", "bash"]
+skills = ["project-setup"]
+instructions = ["tech", "code-conventions"]
+
+# Skills are copied as-is (SKILL.md format is near-universal across agents).
+[[skills]]
+id = "architect-decisions"
+dir = "skills/architect-decisions"
+
+[[skills]]
+id = "project-setup"
+dir = "skills/project-setup"
+
+[[skills]]
+id = "migration"
+dir = "skills/migration"
+
+[[skills]]
+id = "logging"
+dir = "skills/logging"
+
+[[skills]]
+id = "testing"
+dir = "skills/testing"
+
+[[skills]]
+id = "knowledge-base"
+dir = "skills/knowledge-base"
+
+[[skills]]
+id = "skill-design"
+dir = "skills/skill-design"

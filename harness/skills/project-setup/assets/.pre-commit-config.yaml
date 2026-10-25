@@ -1,0 +1,108 @@
+# Pre-commit configuration for data-eng-skill (Based on GlobalTask)
+
+default_language_version:
+  python: python3.12
+
+exclude: |
+  (?x)(
+      ^legacy_code/|
+      ^docs/
+  )
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: detect-private-key
+      - id: check-ast
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.19.1
+    hooks:
+      - id: pyupgrade
+        args: [--py312-plus]
+        name: upgrade code
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.4
+    hooks:
+      - id: ruff
+        name: lint with ruff
+        args: ["--fix", "--unsafe-fixes"]
+      - id: ruff-format
+        name: format with ruff
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.2
+    hooks:
+      - id: bandit
+        args: ["-lll", "-r", "-x", "tests"]
+        files: ^skills/
+
+  - repo: https://github.com/returntocorp/semgrep
+    rev: "v1.97.0"
+    hooks:
+      - id: semgrep
+        name: semgrep security scan
+        args: ["--config", "auto", "--quiet"]
+        files: ^skills/
+
+  - repo: https://github.com/pyupio/safety
+    rev: "3.3.0"
+    hooks:
+      - id: safety
+        args: ["--db", "@latest", "-x", "tests"]
+        files: ^requirements.*$
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: "v2.3.0"
+    hooks:
+      - id: codespell
+        args: ["--ignore-words=.codespellignore"]
+        files: \.(md|txt|py|yaml|yml)$
+
+  - repo: https://github.com/puppetlabs/git-credential-gitleaks
+    rev: "v1.0.0"
+    hooks:
+      - id: gitleaks
+        name: gitleaks credential detection
+        args: ["--base", "--origin"]
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.1.0
+    hooks:
+      - id: commitizen
+        additional_dependencies: [cz-conventional-gitmoji]
+      - id: commitizen-branch
+        additional_dependencies: [cz-conventional-gitmoji]
+        stages:
+          - post-commit
+          - pre-push
+
+  - repo: local
+    hooks:
+      - id: unit-tests
+        name: run unit tests
+        entry: make test
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

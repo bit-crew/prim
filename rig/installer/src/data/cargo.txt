@@ -1,0 +1,10 @@
+# Componentes de rustup y herramientas cargo por perfil.
+# Formato: <item> <perfil>   (both | dc1 | vps)
+# Los componentes rustup (prefijo component:) se instalan con `rustup component add`.
+# El resto se instala con `cargo install`.
+
+# Componentes de la toolchain (ambos)
+component:rust-analyzer both
+
+# Herramientas cargo (ambos)
+bacon both

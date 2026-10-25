@@ -1,0 +1,53 @@
+{{ if eq .profile "vps" -}}
+theme = "zenbones_warm"
+{{- else -}}
+theme = "catppuccin_mocha"
+{{- end }}
+
+[editor]
+line-number = "relative"
+mouse = true
+bufferline = "multiple"
+color-modes = true
+auto-save = true
+
+[editor.cursor-shape]
+insert = "bar"
+normal = "block"
+select = "underline"
+
+[editor.indent-guides]
+render = true
+character = "▏"
+skip-levels = 1
+
+[editor.lsp]
+display-messages = true
+display-inlay-hints = true
+auto-signature-help = true
+
+[editor.statusline]
+left = ["mode", "spinner", "file-name", "file-modification-indicator"]
+center = []
+right = ["diagnostics", "selections", "position", "file-encoding", "file-line-ending", "file-type"]
+mode.normal = "NORMAL"
+mode.insert = "INSERT"
+mode.select = "SELECT"
+
+# Recargar buffers desde disco (util cuando otro proceso modifica archivos
+# abiertos). Ctrl-r en normal mode recarga todos los buffers.
+[keys.normal]
+C-r = ":reload-all"
+
+# lazygit integrado (como el plugin de Vim, pero sin plugins: Helix no los tiene
+# aun). Alt-g suspende Helix, abre lazygit a pantalla completa y al salir vuelve
+# recargando los archivos (por si lazygit hizo checkout/stash/etc.). Se usa A-g
+# en vez de C-g para no chocar con atajos del multiplexer (Herdr).
+A-g = [
+  ":write-all",
+  ":new",
+  ":insert-output lazygit",
+  ":buffer-close!",
+  ":redraw",
+  ":reload-all",
+]

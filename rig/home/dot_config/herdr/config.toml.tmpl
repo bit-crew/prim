@@ -1,0 +1,52 @@
+{{ if eq .profile "vps" -}}
+# ~/.config/herdr/config.toml — generado por chezmoi. Perfil: {{ .profile }}
+# Tema: gris carbon calido. Colores desde la paleta central (.chezmoidata.yaml);
+# cambia un color alli y herdr, helix y lazygit lo toman a la vez.
+
+# Ya elegiste el modo: no vuelvas a mostrar el onboarding.
+onboarding = false
+
+[theme]
+# Base "terminal": herdr no impone un fondo propio, asi que panel_bg (abajo)
+# controla el fondo del panel. Evita que un tema base oscuro gane sobre la paleta.
+name = "terminal"
+
+# Override de tokens sobre la base, desde la paleta central.
+[theme.custom]
+panel_bg = "{{ .palette.bg }}"
+sidebar_bg = "{{ .palette.bg_dim }}"
+active_row_bg = "{{ .palette.bg_sel }}"
+selection_bg = "{{ .palette.bg_sel }}"
+text = "{{ .palette.fg }}"
+accent = "{{ .palette.orange }}"
+yellow = "{{ .palette.yellow }}"
+red = "{{ .palette.red }}"
+green = "{{ .palette.green }}"
+blue = "{{ .palette.blue }}"
+
+[ui.toast]
+delivery = "herdr"
+
+# Atajos para abrir herramientas en popup (prefix = ctrl+b, luego la tecla).
+# popup = terminal modal que se cierra al salir del programa, sin tocar el layout.
+[[keys.command]]
+key = "prefix+plus"
+type = "popup"
+command = "lazygit"
+width = "90%"
+height = "90%"
+
+[[keys.command]]
+key = "prefix+a"
+type = "popup"
+command = "hx ."
+width = "90%"
+height = "90%"
+
+[[keys.command]]
+key = "prefix+d"
+type = "popup"
+command = "lazysql"
+width = "90%"
+height = "90%"
+{{- end }}

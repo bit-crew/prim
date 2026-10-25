@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.css">
+    <style>
+        :root {
+            --bg: #FBFBFB;
+            --text: #111111;
+            --secondary: #666666;
+            --accent: #F0F0F0;
+            --border: #111111;
+        }
+        
+        .reveal-viewport { background: var(--bg); }
+        
+        .reveal { 
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 18px;
+            color: var(--text);
+        }
+        
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: var(--text);
+            text-transform: none;
+            font-weight: 700;
+            text-align: left;
+        }
+        
+        .reveal .slides section {
+            text-align: left;
+            padding: 2rem;
+        }
+        
+        .reveal ul, .reveal ol {
+            display: block;
+            margin-left: 0;
+            padding-left: 1.5em;
+        }
+        
+        .reveal li {
+            margin: 0.5em 0;
+        }
+        
+        .reveal code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background: var(--accent);
+            padding: 0.2em 0.4em;
+            border-radius: 0;
+            font-size: 0.9em;
+        }
+        
+        .reveal pre {
+            background: var(--accent);
+            border: 1px solid var(--border);
+            border-radius: 0;
+            padding: 1em;
+            margin: 1em 0;
+            overflow-x: auto;
+        }
+        
+        .reveal pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        /* Progress bar */
+        .reveal .progress { 
+            background: var(--accent); 
+            height: 3px;
+        }
+        
+        .reveal .progress span { 
+            background: var(--border); 
+        }
+        
+        /* Slide numbers */
+        .reveal .slide-number {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: var(--secondary);
+            background: none;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- {{SLIDES_CONTENT}} -->
+            
+            <section>
+                <h3>SLIDE PLACEHOLDER</h3>
+                <p>Replace this with your markdown content.</p>
+                <pre><code>## Slide Title
+
+- Point one
+- Point two
+- Point three</code></pre>
+            </section>
+            
+            <!-- {{SLIDES_CONTENT}} -->
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            slideNumber: 'c/t',
+            transition: 'none',
+            backgroundTransition: 'none',
+            center: false,
+            width: 1200,
+            margin: 0.1
+        });
+    </script>
+</body>
+</html>

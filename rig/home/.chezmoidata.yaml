@@ -1,0 +1,21 @@
+# Datos estaticos disponibles en todas las plantillas chezmoi.
+# Los datos por-maquina (profile, gitName, gitEmail) se preguntan en .chezmoi.toml.tmpl.
+
+# ---------------------------------------------------------------------------
+# palette — FUENTE UNICA del tema del ambiente (gris carbon calido + crudo).
+# Cambia un color aqui y todas las herramientas lo toman: cada plantilla
+# (herdr, helix, lazygit) referencia estos valores via {{ .palette.<key> }}.
+# ---------------------------------------------------------------------------
+palette:
+  bg: "#31312F"      # fondo: gris carbon calido (panel y sidebar iguales)
+  bg_dim: "#31312F"  # igual que bg: sidebar sin diferencia visible con el panel
+  bg_sel: "#3C3C39"  # seleccion / fila activa / linea actual (un escalon mas claro)
+  fg: "#F6F1EA"      # texto crudo calido
+  fg_dim: "#A8A39B"  # comentarios / texto sutil
+  orange: "#B45A3C"  # acento principal: terracota
+  yellow: "#C5A44D"  # amarillo ocre
+  purple: "#9580B5"  # morado malva
+  green: "#777C45"   # verde oliva
+  blue: "#638A7D"    # azul-verdoso frio-calido
+  cyan: "#91A99A"    # verde-gris claro (cyan de la paleta)
+  red: "#8F4935"     # oxido (terracota oscuro): rojo calido de la paleta

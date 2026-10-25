@@ -1,0 +1,38 @@
+gui:
+{{- if eq .profile "vps" }}
+  # Tema desde la paleta central (.chezmoidata.yaml); consistente con herdr/helix.
+  theme:
+    activeBorderColor:
+      - "{{ .palette.orange }}"
+      - bold
+    inactiveBorderColor:
+      - "{{ .palette.fg_dim }}"
+    selectedLineBgColor:
+      - "{{ .palette.bg_sel }}"
+    optionsTextColor:
+      - "{{ .palette.blue }}"
+{{- else }}
+  theme:
+    activeBorderColor:
+      - green
+      - bold
+    inactiveBorderColor:
+      - white
+    selectedLineBgColor:
+      - reverse
+{{- end }}
+  nerdFontsVersion: "3"
+  commitLength:
+    show: true
+git:
+  paging:
+    colorArg: always
+    pager: delta --dark --paging=never --side-by-side --line-numbers
+  skipHookPrefix: "WIP"
+update:
+  method: never
+  days: 14
+confirmOnQuit: false
+os:
+  editPreset: "helix"
+  disableStartupPopups: true

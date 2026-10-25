@@ -1,0 +1,41 @@
+# Paquetes de sistema por perfil y por gestor de paquetes.
+# bootstrap.sh detecta el gestor (apt | pkg | brew) y usa la columna adecuada.
+#
+# Formato por linea (separado por espacios/tabs):
+#   <id>  <perfil>  <apt>  <pkg>  <brew>
+#
+#   perfil: both | dc1 | vps
+#   Un valor '-' en una columna significa "no instalar en ese gestor".
+#   <id> es solo un identificador legible (no se instala directamente).
+#
+# Estado de verificacion:
+#   apt  -> VERIFICADO en Debian 13 (VPS real).
+#   pkg  -> nombres segun catalogo Termux; CONFIRMAR en la tablet.
+#   brew -> nombres segun Homebrew; CONFIRMAR en Mac.
+# Lineas que empiezan con # se ignoran.
+
+# id            perfil  apt                pkg            brew
+git             both    git                git            git
+openssh-client  both    openssh-client     openssh        openssh
+openssh-server  vps     openssh-server     openssh        -
+zsh             both    zsh                zsh            zsh
+curl            both    curl               curl           curl
+jq              both    jq                 jq             jq
+ca-certificates both    ca-certificates    ca-certificates -
+fontconfig      both    fontconfig         fontconfig     -
+ripgrep         both    ripgrep            ripgrep        ripgrep
+fd              both    fd-find            fd             fd
+bat             both    bat                bat            bat
+fzf             both    fzf                fzf            fzf
+direnv          both    direnv             direnv         direnv
+unzip           both    unzip              unzip          -
+build-essential both    build-essential    build-essential -
+pkg-config      both    pkg-config         pkg-config     pkg-config
+libssl-dev      both    libssl-dev         openssl        openssl
+
+# --- Solo VPS: Data Engineering, infra y Moshi (control movil) ---
+openjdk         vps     openjdk-21-jdk     openjdk-21     openjdk@21
+age             vps     age                age            age
+clang           vps     clang              clang          -
+clangd          vps     clangd             clang          -
+mosh            vps     mosh               mosh           mosh

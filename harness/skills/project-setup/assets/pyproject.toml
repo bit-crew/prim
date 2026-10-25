@@ -1,0 +1,24 @@
+[project]
+name = "data-eng-skill"
+version = "0.1.0"
+description = "Minimalist toolbox for AI-assisted Data Engineering"
+authors = [
+    { name = "Johan Marin" }
+]
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+ignore = ["E731"]
+
+[tool.codespell]
+skip = ".git,*.egg-info,build,dist"
+ignore-words-list = "nd,ro"  # Custom words to ignore
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["skills"]
