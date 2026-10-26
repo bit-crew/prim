@@ -1,0 +1,70 @@
+name: build-harness
+
+# Compiles the harness-install binary (agent skills + instructions installer)
+# on GitHub runners and publishes it to the "latest" prerelease with checksums.
+# Targets: x86_64-linux (glibc) and aarch64-linux (musl static, for ARM/Termux).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "harness/installer/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build-harness.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: harness-install-x86_64-linux
+            apt_musl: ""
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            asset: harness-install-aarch64-linux
+            apt_musl: "musl-tools"
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable) + target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
+
+      - name: Install musl tools (ARM target)
+        if: matrix.apt_musl != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt_musl }}
+
+      - name: Build release (${{ matrix.target }})
+        run: cargo build --release -p harness-install --target ${{ matrix.target }}
+
+      - name: Smoke test (binary executes and links)
+        run: |
+          BIN="$(pwd)/target/${{ matrix.target }}/release/harness-install"
+          test -x "$BIN"
+
+      - name: Stage artifact + checksum
+        run: |
+          OUT="target/${{ matrix.target }}/release/harness-install"
+          cp "$OUT" "${{ matrix.asset }}"
+          sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+          cat "${{ matrix.asset }}.sha256"
+
+      - name: Publish "latest" prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: prim installers (latest build)
+          prerelease: true
+          files: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
