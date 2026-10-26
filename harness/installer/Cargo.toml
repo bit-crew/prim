@@ -11,3 +11,4 @@ path = "src/main.rs"
 
 [dependencies]
 dirs = "5.0"
+serde_json = "1.0"

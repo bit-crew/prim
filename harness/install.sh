@@ -1,15 +1,19 @@
 #!/bin/sh
-# install.sh - bootstrap for the Harness component (agent skills + instructions).
+# install.sh - bootstrap for the Harness component (agent: runtime + config).
 #
 # Downloads the prebuilt `harness-install` binary (published by GitHub Actions
 # in the "latest" release of bit-crew/prim), verifies its sha256, and runs it.
-# The binary installs the agent-agnostic skills (own + external) into
-# ~/.agents/skills, which Pi scans.
+# The binary installs the agent runtime (Google ADK, Pi, gentle-ai) and
+# configures it (skills into ~/.agents/skills, instructions into AGENTS.md,
+# Engram local, skill-registry refresh).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/harness/install.sh | sh
 #
-# Pass `update` to update external skills:
+# Install only the skills (no agent runtime):
+#   curl -fsSL .../harness/install.sh | sh -s -- --skills-only
+#
+# Update external skills:
 #   curl -fsSL .../harness/install.sh | sh -s -- update
 
 set -eu

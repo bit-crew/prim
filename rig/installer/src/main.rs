@@ -6,9 +6,12 @@
 //! What it does: detect the package manager and architecture, install system
 //! packages (embedded from src/data/system.txt), create fd/bat symlinks,
 //! install toolchains (rustup/uv/go) and downloaded binaries (helix, herdr,
-//! lazygit, ...). On the VPS profile it also installs the agent (Pi + gentle-ai),
-//! delegates skills to prim-skills, installs moshi-hook, and enables the OS
-//! services it needs. Finally it installs chezmoi and applies the dotfiles.
+//! lazygit, ...). On the VPS profile it also installs cloud infra (AWS,
+//! Terraform, sops, wrangler, gcloud), moshi-hook, and enables the OS services
+//! it needs. Finally it installs chezmoi and applies the dotfiles.
+//!
+//! The agent (ADK + Pi + gentle-ai) is NOT installed here — that is the
+//! harness component's job. Rig is the environment; harness configures agents.
 //!
 //! Profile: "vps" or "dc1" (client). Resolved from --profile, else DEVLAB_PROFILE,
 //! else prompt. Non-interactive when stdin is not a TTY.
@@ -18,7 +21,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod binaries;
-mod gentle;
 mod hook;
 
 const BLUE: &str = "\x1b[1;34m";
@@ -90,10 +92,6 @@ fn run() -> io::Result<()> {
     install_system_packages(&pkgmgr, profile)?;
     ensure_fd_bat_symlinks();
     binaries::install_all(profile)?;
-    // After gentle-ai is installed (VPS), curate it with prim-skills content.
-    if profile == Profile::Vps {
-        gentle::curate();
-    }
     ensure_chezmoi()?;
     apply_dotfiles(profile)?;
     set_login_shell_zsh();

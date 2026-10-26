@@ -1,26 +1,28 @@
 //! prim-skills-install — installs the agent-agnostic skills into the agent.
+//! harness-install — installs and configures a coding agent.
 //!
-//! Two kinds of skill, one destination:
-//!   - OWN skills (this repo's `skills/*`): copied into ~/.agents/skills.
-//!   - EXTERNAL skills (Archify, grill-me): installed from source with the
-//!     `skills` CLI (`npx skills add ... --agent pi`), which also writes to
-//!     ~/.agents/skills. Installing from source keeps them updatable.
+//! Two layers, one component:
+//!   - AGENT RUNTIME (agent.rs): Google ADK (uv), Pi, gentle-ai + Pi settings.
+//!   - AGENT CONFIG: skills (own + external) into ~/.agents/skills, plus curation
+//!     (instructions into AGENTS.md, Engram local, skill-registry refresh).
 //!
-//! ~/.agents/skills is a scan root for Pi (verified in gentle-pi's
-//! skill-registry), so everything lands in one place Pi reads.
-//!
-//! Target agent: Pi (for now). The set of skills is universal (no profiles).
+//! ~/.agents/skills is a scan root for Pi, so skills land where Pi reads them.
+//! Target agent: Pi (for now); harness is meant to configure different agents.
 //!
 //! Subcommands:
-//!   (none)   install/refresh all skills (idempotent)
-//!   update   update external skills to latest (`skills update`)
+//!   (none)        install the agent runtime + skills + curation
+//!   --skills-only install only the skills (no runtime), for lighter setups
+//!   update        update external skills to latest (`skills update`)
+//!   uninstall     remove managed skills
 //!
-//! Dependencies: Node/npx (for the `skills` CLI). If missing, external skills
-//! are skipped with a note — the environment installer (devlab) owns Node.
+//! Dependencies: uv (agent runtime; ensured here if missing), Node/npx (external
+//! skills), git (sparse clone), curl/bash (official agent installers).
 
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+mod agent;
 
 const BLUE: &str = "\x1b[1;34m";
 const GREEN: &str = "\x1b[1;32m";
@@ -41,13 +43,13 @@ const EXTERNAL_SKILLS: &[(&str, &str)] = &[
 ];
 
 fn log(msg: &str) {
-    println!("{BLUE}[prim-skills]{RESET} {msg}");
+    println!("{BLUE}[harness]{RESET} {msg}");
 }
 fn ok(msg: &str) {
-    println!("{GREEN}[prim-skills]{RESET} {msg}");
+    println!("{GREEN}[harness]{RESET} {msg}");
 }
 fn err(msg: &str) {
-    eprintln!("{RED}[prim-skills]{RESET} {msg}");
+    eprintln!("{RED}[harness]{RESET} {msg}");
 }
 
 fn main() {
@@ -55,6 +57,7 @@ fn main() {
     let result = match arg.as_str() {
         "update" => run_update(),
         "uninstall" => run_uninstall(),
+        "--skills-only" | "skills-only" => run_skills_only(),
         _ => run_install(),
     };
     if let Err(e) = result {
@@ -63,17 +66,80 @@ fn main() {
     }
 }
 
-/// Install/refresh all skills into ~/.agents/skills.
+/// Install only the skills (own + external) into ~/.agents/skills. No runtime.
+fn run_skills_only() -> io::Result<()> {
+    let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
+    let dest = agents_skills_dir(&home);
+    std::fs::create_dir_all(&dest)?;
+    install_skills(&dest)?;
+    ok("Skills instaladas/actualizadas en ~/.agents/skills (solo skills).");
+    Ok(())
+}
+
+/// Full install: ensure uv, install the agent runtime, install skills, curate.
 fn run_install() -> io::Result<()> {
     let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
     let dest = agents_skills_dir(&home);
     std::fs::create_dir_all(&dest)?;
 
-    install_own_skills(&dest)?;
-    install_external_skills();
+    ensure_uv();
+    agent::install_runtime();
 
-    ok("Skills instaladas/actualizadas en ~/.agents/skills.");
+    // Curation installs the skills in-process (no curl|sh recursion).
+    agent::curate(|| {
+        let _ = install_skills(&dest);
+    });
+
+    ok("Agente instalado y configurado (runtime + skills + curaduria).");
     Ok(())
+}
+
+/// Install own + external skills into `dest`. Shared by full install and
+/// --skills-only and the curation callback.
+fn install_skills(dest: &Path) -> io::Result<()> {
+    install_own_skills(dest)?;
+    install_external_skills();
+    Ok(())
+}
+
+/// Ensure uv is available (the agent runtime's ADK needs it). Installs via the
+/// official script if missing, so `harness` can set up the agent standalone.
+fn ensure_uv() {
+    if which("uv") {
+        return;
+    }
+    log("Instalando uv (requerido por el runtime del agente)...");
+    if let Some(script) = curl_text("https://astral.sh/uv/install.sh") {
+        let _ = pipe_sh(&script);
+    } else {
+        err("no se pudo descargar el instalador de uv (continuo; ADK podria fallar).");
+    }
+}
+
+/// Fetch a URL body as text (IPv4 forced).
+fn curl_text(url: &str) -> Option<String> {
+    let out = Command::new("curl")
+        .args(["-4", "-fsSL", url])
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Pipe a script to sh.
+fn pipe_sh(script: &str) -> bool {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    match Command::new("sh").stdin(Stdio::piped()).spawn() {
+        Ok(mut c) => {
+            if let Some(mut stdin) = c.stdin.take() {
+                let _ = stdin.write_all(script.as_bytes());
+            }
+            c.wait().map(|s| s.success()).unwrap_or(false)
+        }
+        Err(_) => false,
+    }
 }
 
 /// Update external skills to their latest version (`skills update`).

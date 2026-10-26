@@ -45,6 +45,7 @@ name = "harness-install"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "serde_json",
 ]
 
 [[package]]
