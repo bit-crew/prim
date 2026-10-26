@@ -71,6 +71,7 @@ fn run_skills_only() -> io::Result<()> {
     let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
     let dest = agents_skills_dir(&home);
     std::fs::create_dir_all(&dest)?;
+    ensure_node();
     install_skills(&dest)?;
     ok("Skills instaladas/actualizadas en ~/.agents/skills (solo skills).");
     Ok(())
@@ -83,6 +84,7 @@ fn run_install() -> io::Result<()> {
     std::fs::create_dir_all(&dest)?;
 
     ensure_uv();
+    ensure_node();
     agent::install_runtime();
 
     // Curation installs the skills in-process (no curl|sh recursion).
@@ -140,6 +142,71 @@ fn pipe_sh(script: &str) -> bool {
         }
         Err(_) => false,
     }
+}
+
+/// Ensure Node/npx is available (external skills install via `npx skills add`).
+/// Installs the official Node tarball into ~/.local/node if missing, so harness
+/// can install external skills standalone (without rig). Matches rig's layout.
+fn ensure_node() {
+    if has_npx() {
+        return;
+    }
+    let Some(home) = dirs::home_dir() else { return };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        other => {
+            err(&format!(
+                "arch {other} no soportada para Node (continuo sin externas)"
+            ));
+            return;
+        }
+    };
+    let Some(ver) = node_latest_version() else {
+        err("no se pudo resolver version de Node (continuo sin externas)");
+        return;
+    };
+    log(&format!(
+        "Instalando Node.js {ver} (requerido por skills externas)..."
+    ));
+    let tmp = std::env::temp_dir().join(format!("harness-node-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&tmp);
+    let tar = tmp.join("node.tar.xz");
+    let url = format!("https://nodejs.org/dist/{ver}/node-{ver}-linux-{arch}.tar.xz");
+    let node_dir = home.join(".local").join("node");
+    if run_ok(
+        "curl",
+        &["-4", "-fsSL", "-o", tar.to_str().unwrap_or(""), &url],
+    ) {
+        let _ = std::fs::create_dir_all(&node_dir);
+        let _ = run_ok(
+            "tar",
+            &[
+                "-xf",
+                tar.to_str().unwrap_or(""),
+                "-C",
+                node_dir.to_str().unwrap_or(""),
+                "--strip-components=1",
+            ],
+        );
+    } else {
+        err("no se pudo descargar Node.js (continuo sin externas)");
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// Resolve the latest Node version string (vX.Y.Z) from the dist index.
+fn node_latest_version() -> Option<String> {
+    let body = curl_text("https://nodejs.org/dist/index.json")?;
+    let idx = body.find("\"version\"")?;
+    let seg = &body[idx..];
+    let q1 = seg.find('"')?;
+    let after = &seg[q1 + 1..];
+    let colon = after.find(':')?;
+    let seg2 = &after[colon..];
+    let a = seg2.find('"')? + 1;
+    let b = seg2[a..].find('"')? + a;
+    Some(seg2[a..b].to_string())
 }
 
 /// Update external skills to their latest version (`skills update`).
