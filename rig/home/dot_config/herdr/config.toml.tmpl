@@ -46,6 +46,15 @@ rows = [["state_icon", "workspace", "branch", "git_status"]]
 [ui.toast]
 delivery = "herdr"
 
+# Navegacion de agentes en la sidebar (prefix = ctrl+b, luego la combinacion).
+[keys]
+# Saltar directo al agente N (1..9) de la sidebar: prefix, ctrl, numero.
+focus_agent = "prefix+ctrl+1..9"
+# Moverse entre agentes con j/k (estilo vim). alt para no chocar con el
+# pane-swap built-in (prefix+shift+j/k).
+previous_agent = "prefix+alt+k"
+next_agent = "prefix+alt+j"
+
 # Atajos para abrir herramientas en popup (prefix = ctrl+b, luego la tecla).
 # popup = terminal modal que se cierra al salir del programa, sin tocar el layout.
 [[keys.command]]
