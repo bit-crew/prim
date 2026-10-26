@@ -24,6 +24,25 @@ red = "{{ .palette.red }}"
 green = "{{ .palette.green }}"
 blue = "{{ .palette.blue }}"
 
+[ui]
+# Pestanas: nombre automatico segun el proceso (no preguntar al crear).
+prompt_new_tab_name = false
+# Estado de agentes con glifos distintos por estado (mas legible que puntos).
+status_indicators = "symbols"
+# Espaciado entre paneles para una apariencia limpia.
+pane_gaps = true
+
+# Sidebar de agentes: ver de un vistazo QUE hace cada agente, no solo el modelo.
+# terminal_title_stripped = titulo del proceso (la tarea), sin el spinner.
+[ui.sidebar.agents]
+row_gap = 0
+rows = [["state_icon", "workspace", "tab"], ["terminal_title_stripped"]]
+
+# Spaces compactos: workspace + rama + estado git en UNA sola linea.
+[ui.sidebar.spaces]
+row_gap = 0
+rows = [["state_icon", "workspace", "branch", "git_status"]]
+
 [ui.toast]
 delivery = "herdr"
 
