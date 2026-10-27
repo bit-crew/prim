@@ -3,6 +3,16 @@
 #  zsh - perfil: {{ .profile }}
 # ============================================
 
+# Color del terminal: si el TERM que llega es pobre ("dumb"/vacio, p.ej. por una
+# sesion SSH mal negociada), forzar uno con color. Esto DEBE ir antes de starship
+# y demas: con un TERM pobre, los prompts consultan la paleta por OSC y las
+# respuestas (rgb:xxxx/...) se filtran como basura en pantalla. Con un TERM con
+# color + COLORTERM=truecolor, no consultan.
+case "$TERM" in
+  ""|dumb|unknown) export TERM=xterm-256color ;;
+esac
+export COLORTERM=truecolor
+
 # Completion
 autoload -Uz compinit && compinit
 
@@ -38,10 +48,6 @@ command -v zoxide   >/dev/null && eval "$(zoxide init zsh)"
 command -v atuin    >/dev/null && eval "$(atuin init zsh)"
 command -v direnv   >/dev/null && eval "$(direnv hook zsh)"
 {{ if eq .profile "vps" }}
-# Anuncia truecolor para que los colores hex del tema (zenbones warm) se vean
-# fieles sin depender de que la app SSH del cliente (tablet) lo declare.
-export COLORTERM=truecolor
-
 # Herdr como terminal por defecto del VPS. Toda sesion interactiva (Moshi, SSH,
 # consola) arranca o se adjunta a herdr. HERDR_ENV lo exporta herdr dentro de sus
 # panes; la guarda evita anidar herdr dentro de herdr. exec reemplaza zsh para que
