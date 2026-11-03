@@ -10,7 +10,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::receipt::Bin;
 use crate::{which, Profile};
@@ -1062,6 +1062,15 @@ fn install_nerd_font(e: &Env) {
 /// VPS-only infra tools. The agent stack is Pi + gentle-ai: Pi is the base
 /// coding agent (gentle-ai refuses to run without it), so it is installed
 /// before gentle-ai. kiro-cli is intentionally NOT installed anymore.
+/// Called by `update` on the vps profile: re-run the infra installers. All are
+/// presence-gated and gcloud is health-gated, so this also repairs a corrupt
+/// install instead of skipping it forever.
+pub fn refresh_vps_infra() {
+    let Some(arch) = detect_arch() else { return };
+    let Ok(e) = env() else { return };
+    install_vps_infra(&e, arch);
+}
+
 fn install_vps_infra(e: &Env, arch: Arch) {
     note("Perfil vps: instalando infra...");
     install_aws(e, arch);
@@ -1269,8 +1278,18 @@ fn install_wrangler(e: &Env) {
 /// bucket, download, extract to ~/.local, run its install.sh, symlink binaries.
 /// Mirrors run_once_15 (uses the storage.googleapis.com mirror, reliable).
 fn install_gcloud(e: &Env, arch: Arch) {
-    if which("gcloud") {
+    if gcloud_healthy() {
         return;
+    }
+    // which()-resolvable but broken (e.g. the pre-Rust installer's per-tool
+    // check once overwrote bin/{gcloud,gsutil} with "OK <name> -" text):
+    // wipe the corrupt SDK and links, then reinstall from scratch.
+    if which("gcloud") {
+        note("gcloud existe pero no responde (instalacion corrupta); reparando...");
+        let _ = std::fs::remove_dir_all(e.home.join(".local").join("google-cloud-sdk"));
+        for bin in ["gcloud", "gsutil"] {
+            let _ = std::fs::remove_file(e.local_bin.join(bin));
+        }
     }
     note("Instalando Google Cloud SDK (binario oficial)...");
     // gcloud archive arch label: x86_64 or arm.
@@ -1314,6 +1333,19 @@ fn install_gcloud(e: &Env, arch: Arch) {
         note("fallo extrayendo gcloud SDK (continuo)");
     }
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// True when gcloud resolves AND runs. A corrupt install that still satisfies
+/// which() must not satisfy the gate, or it never gets repaired.
+fn gcloud_healthy() -> bool {
+    which("gcloud")
+        && Command::new("gcloud")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
 }
 
 /// List the official cloud-sdk-release bucket and pick the newest linux archive

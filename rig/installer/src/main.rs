@@ -122,6 +122,13 @@ fn run_update() -> io::Result<()> {
     binaries::update_rustup();
     log("Toolchain go: no se toca en update (reinstalalo a mano si necesitas otra version).");
 
+    // VPS infra (aws/gcloud/terraform/sops/wrangler/moshi): every installer is
+    // presence-gated and gcloud is health-gated, so update also repairs a
+    // corrupt installation instead of skipping it forever.
+    if profile == Profile::Vps {
+        binaries::refresh_vps_infra();
+    }
+
     if let Err(e) = ensure_chezmoi().and_then(|()| apply_dotfiles(profile)) {
         log(&format!("dotfiles: fallo ({e}; continuo)"));
     }
