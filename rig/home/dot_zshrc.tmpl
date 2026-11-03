@@ -47,6 +47,16 @@ command -v starship >/dev/null && eval "$(starship init zsh)"
 command -v zoxide   >/dev/null && eval "$(zoxide init zsh)"
 command -v atuin    >/dev/null && eval "$(atuin init zsh)"
 command -v direnv   >/dev/null && eval "$(direnv hook zsh)"
+
+# Aterrizar en ~/work: al abrir una consola nueva o entrar por SSH sin estar
+# en ningun proyecto, la sesion arranca en la carpeta de organizaciones (una
+# por cuenta de git). La guarda (PRIM_LANDING exportada) evita re-mover shells
+# anidadas; si la sesion arranca en otra carpeta (pane, repo), no se toca.
+# Va antes del exec herdr para que las panes hereden ~/work como cwd.
+if [[ -o interactive ]] && [[ "$PWD" == "$HOME" ]] && [[ -d "$HOME/work" ]] && [[ -z "${PRIM_LANDING:-}" ]]; then
+  export PRIM_LANDING=1
+  cd "$HOME/work"
+fi
 {{ if eq .profile "vps" }}
 # Herdr como terminal por defecto del VPS. Toda sesion interactiva (Moshi, SSH,
 # consola) arranca o se adjunta a herdr. HERDR_ENV lo exporta herdr dentro de sus

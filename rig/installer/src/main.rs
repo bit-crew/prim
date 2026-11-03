@@ -95,6 +95,7 @@ fn run() -> io::Result<()> {
     ensure_chezmoi()?;
     apply_dotfiles(profile)?;
     set_login_shell_zsh();
+    ensure_work_dir();
 
     log("Instalacion completa.");
     Ok(())
@@ -135,6 +136,24 @@ fn set_login_shell_zsh() {
         log("Shell de login = zsh. Reconecta para que tome efecto.");
     } else {
         log("No se pudo cambiar el shell de login (continuo). Ejecuta 'zsh' manualmente o 'chsh -s $(which zsh)'.");
+    }
+}
+
+/// ~/work is where organizations live (one directory per git account, managed
+/// by `prim org`; see rig/docs/organizaciones.md). Created here so a fresh
+/// install ends with it ready, and new shells land in it (see dot_zshrc).
+fn ensure_work_dir() {
+    let Some(home) = dirs::home_dir() else { return };
+    let work = home.join("work");
+    match std::fs::create_dir_all(&work) {
+        Ok(()) => log(&format!(
+            "Carpeta de organizaciones lista: {}",
+            work.display()
+        )),
+        Err(e) => log(&format!(
+            "no se pudo crear {} ({e}; continuo)",
+            work.display()
+        )),
     }
 }
 

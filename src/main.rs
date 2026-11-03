@@ -13,6 +13,8 @@
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
+mod org;
+
 /// Base raw URL of the monorepo's main branch.
 const RAW_BASE: &str = "https://raw.githubusercontent.com/bit-crew/prim/main";
 
@@ -49,6 +51,14 @@ const COMPONENTS: &[Component] = &[
 ];
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    // `prim org ...` — organization management, not an install component.
+    if args.first().map(|a| a == "org").unwrap_or(false) {
+        org::run(&args[1..]);
+        return;
+    }
+
     // Non-interactive shortcut: `prim <keys...>` (e.g. `prim rig harness`) or
     // `prim all` skips the menu. Otherwise show the interactive selector.
     let args: Vec<String> = std::env::args().skip(1).collect();

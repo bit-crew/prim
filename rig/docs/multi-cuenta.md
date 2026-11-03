@@ -120,6 +120,13 @@ mkdir -p ~/work/cliente-x && cd ~/work/cliente-x
 # 5. direnv: crear .envrc (AWS_PROFILE, CLOUDSDK_ACTIVE_CONFIG_NAME) + direnv allow
 ```
 
+## Automatizacion (git por organizacion)
+
+El caso git (una cuenta de GitHub/Bitbucket por carpeta, con su clave SSH) ya
+esta automatizado con `prim org new <nombre>` — ver
+[organizaciones.md](./organizaciones.md). Este documento cubre lo que sigue
+siendo manual: identidad git (`includeIf`), alias SSH y perfiles AWS/GCP.
+
 ## Nota de seguridad
 
 Los `.envrc` NO deben contener secretos (claves, tokens) — solo nombres de

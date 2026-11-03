@@ -16,6 +16,14 @@ It is not only financial. It is the operating system of your productive life.
 
 ---
 
+## The prim binary (management surface)
+
+Prim ends up as a single runnable binary that manages everything. Today it
+selects and installs components (rig / harness / core) and already manages
+organizations (`prim org new|secret|list`: one git account per directory under
+~/work — see `rig/docs/organizaciones.md`). Every new management capability
+lands as a subcommand of that binary.
+
 ## Completed
 
 - [x] `docs/guia-tributaria-sas.md` — Colombia tax rules for any SAS
