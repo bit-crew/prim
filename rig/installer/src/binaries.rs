@@ -78,7 +78,12 @@ pub fn install_all(profile: Profile) -> io::Result<()> {
     install_npm_lsps(&e);
     install_uv_tools();
     install_yazi(&e, arch);
-    install_nerd_font(&e);
+    install_codelldb(&e);
+    // Nerd font only on the client (dc1): fonts render in the local terminal,
+    // so a copy on a headless VPS (SSH) is dead weight.
+    if profile != Profile::Vps {
+        install_nerd_font(&e);
+    }
 
     // Multiplexer: Herdr on both profiles. It is the agent-aware multiplexer on
     // the VPS (drives Moshi over SSH) and a complete, lighter multiplexer with
@@ -752,6 +757,57 @@ fn install_yazi(e: &Env, arch: Arch) {
         note("Yazi instalado en ~/.local/bin/yazi");
     } else {
         note("no se pudo instalar Yazi (continuo)");
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+// --- codelldb --------------------------------------------------------------
+
+/// codelldb: the Rust DAP that the helix debug config references
+/// (languages.toml, :debug-start). Orphaned when the run_once scripts were
+/// ported to Rust — this restores it. Ships as a VSIX (a zip); the standalone
+/// binary lives at extension/adapter2/codelldb.
+fn install_codelldb(e: &Env) {
+    if which("codelldb") {
+        return;
+    }
+    let Some(ver) = latest_github_version("vadimcn/codelldb") else {
+        note("no se pudo resolver version de codelldb (continuo)");
+        return;
+    };
+    note(&format!("Instalando codelldb {ver} (DAP de Rust)..."));
+    let a = if detect_arch().map(|x| x.is_x86()).unwrap_or(true) {
+        "x86_64"
+    } else {
+        "aarch64"
+    };
+    let Ok(tmp) = tmpdir() else { return };
+    let url = format!(
+        "https://github.com/vadimcn/codelldb/releases/download/v{ver}/codelldb-{a}-linux.vsix"
+    );
+    let vsix = tmp.join("codelldb.vsix");
+    if download(&url, &vsix)
+        && run_ok(
+            "unzip",
+            &[
+                "-qo",
+                vsix.to_str().unwrap(),
+                "extension/adapter2/codelldb",
+                "-d",
+                tmp.to_str().unwrap(),
+            ],
+        )
+    {
+        let from = tmp.join("extension").join("adapter2").join("codelldb");
+        let dst = e.local_bin.join("codelldb");
+        if std::fs::copy(&from, &dst).is_ok() {
+            chmod_x(&dst);
+            note("codelldb instalado en ~/.local/bin/codelldb");
+        } else {
+            note("no se pudo copiar codelldb (continuo)");
+        }
+    } else {
+        note("no se pudo instalar codelldb (continuo)");
     }
     let _ = std::fs::remove_dir_all(&tmp);
 }
