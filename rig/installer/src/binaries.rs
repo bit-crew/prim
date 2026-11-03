@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::receipt::Bin;
 use crate::{which, Profile};
 
 const BLUE: &str = "\x1b[1;34m";
@@ -89,7 +90,7 @@ pub fn install_all(profile: Profile) -> io::Result<()> {
     // the VPS (drives Moshi over SSH) and a complete, lighter multiplexer with
     // saved layouts for offline manual work on the client. One tool, both cases.
     install_herdr();
-    install_prim(&e, arch);
+    // prim's permanent binary is owned by prim itself (S5); root install.sh installs it.
 
     if profile == Profile::Vps {
         install_vps_infra(&e, arch);
@@ -412,31 +413,73 @@ fn install_herdr() {
     }
 }
 
-// --- prim (this repo's orchestrator) ----------------------------------------
+// --- receipt manifest --------------------------------------------------------
 
-/// The prim binary itself: component selector + organization management
-/// (`prim org new|secret|list`). CI publishes it to this repo's "latest"
-/// prerelease (prim-x86_64-linux / prim-aarch64-linux), the same release
-/// rig-install comes from. Straight into ~/.local/bin (already on PATH).
-fn install_prim(e: &Env, arch: Arch) {
-    if which("prim") {
-        return;
-    }
-    note("Instalando prim (gestor de organizaciones)...");
-    let suffix = if arch.is_x86() {
-        "x86_64-linux"
-    } else {
-        "aarch64-linux"
-    };
-    let url = format!("https://github.com/bit-crew/prim/releases/download/latest/prim-{suffix}");
-    let dest = e.local_bin.join("prim");
-    if download(&url, &dest) {
-        chmod_x(&dest);
-        note("prim instalado (~/.local/bin/prim).");
-    } else {
-        note("no se pudo descargar prim (continuo)");
-        let _ = std::fs::remove_file(&dest);
-    }
+/// Static manifest of the tools this module installs from upstream (not via a
+/// package manager): install path plus the GitHub repo for version checks.
+/// Recorded in the install receipt; `version` stays None until the update unit
+/// (T4) threads real versions in. lazysql is the one exception to ~/.local/bin:
+/// `go install` places it in GOPATH/bin (~/go/bin).
+pub fn manifest(home: &Path) -> Vec<Bin> {
+    let bin = home.join(".local").join("bin");
+    let go_bin = home.join("go").join("bin");
+    let at = |p: PathBuf| p.to_string_lossy().into_owned();
+    vec![
+        Bin {
+            name: "hx".into(),
+            path: at(bin.join("hx")),
+            version: None,
+            repo: Some("helix-editor/helix".into()),
+        },
+        Bin {
+            name: "herdr".into(),
+            path: at(bin.join("herdr")),
+            version: None,
+            repo: None, // installed by herdr.dev's own script
+        },
+        Bin {
+            name: "lazygit".into(),
+            path: at(bin.join("lazygit")),
+            version: None,
+            repo: Some("jesseduffield/lazygit".into()),
+        },
+        Bin {
+            name: "delta".into(),
+            path: at(bin.join("delta")),
+            version: None,
+            repo: Some("dandavison/delta".into()),
+        },
+        Bin {
+            name: "marksman".into(),
+            path: at(bin.join("marksman")),
+            version: None,
+            repo: Some("artempyanykh/marksman".into()),
+        },
+        Bin {
+            name: "yazi".into(),
+            path: at(bin.join("yazi")),
+            version: None,
+            repo: Some("sxyazi/yazi".into()),
+        },
+        Bin {
+            name: "ya".into(),
+            path: at(bin.join("ya")),
+            version: None,
+            repo: Some("sxyazi/yazi".into()),
+        },
+        Bin {
+            name: "codelldb".into(),
+            path: at(bin.join("codelldb")),
+            version: None,
+            repo: Some("vadimcn/codelldb".into()),
+        },
+        Bin {
+            name: "lazysql".into(),
+            path: at(go_bin.join("lazysql")),
+            version: None,
+            repo: Some("jorgerojas26/lazysql".into()),
+        },
+    ]
 }
 
 // --- lazygit ----------------------------------------------------------------

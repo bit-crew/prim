@@ -301,11 +301,8 @@ fn pick_uninstall() -> Vec<&'static str> {
 
 /// True when stdin is a terminal (decides picker vs usage error).
 fn stdin_is_tty() -> bool {
-    Command::new("sh")
-        .args(["-c", "test -t 0"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    use std::io::IsTerminal;
+    io::stdin().is_terminal()
 }
 
 // --- status ------------------------------------------------------------------
@@ -335,7 +332,7 @@ pub fn status() {
         let key = name.trim_end_matches(".receipt.json");
         let text = fs::read_to_string(dir.join(&name)).unwrap_or_default();
         let profile = json_field(&text, "profile").unwrap_or_else(|| "-".into());
-        let installed_at = json_field(&text, "installed_at").unwrap_or_else(|| "-".into());
+        let installed_at = json_field(&text, "installed_at_iso").unwrap_or_else(|| "-".into());
         println!("{key}: profile={profile} installed_at={installed_at}");
     }
 }
@@ -359,10 +356,10 @@ mod tests {
     /// quoted keys ("at" must not match inside "installed_at").
     #[test]
     fn json_field_scans_receipt_fields() {
-        let receipt = r#"{"key":"rig","profile":"dc1","installed_at":"2026-11-03T10:00:00Z"}"#;
+        let receipt = r#"{"key":"rig","profile":"dc1","installed_at_iso":"2026-11-03T10:00:00Z"}"#;
         assert_eq!(json_field(receipt, "profile").as_deref(), Some("dc1"));
         assert_eq!(
-            json_field(receipt, "installed_at").as_deref(),
+            json_field(receipt, "installed_at_iso").as_deref(),
             Some("2026-11-03T10:00:00Z")
         );
         assert_eq!(json_field(receipt, "at"), None);

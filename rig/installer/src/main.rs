@@ -22,6 +22,7 @@ use std::process::Command;
 
 mod binaries;
 mod hook;
+mod receipt;
 
 const BLUE: &str = "\x1b[1;34m";
 const RED: &str = "\x1b[1;31m";
@@ -40,6 +41,8 @@ fn main() {
     let result = match arg.as_str() {
         "verify" => run_verify(),
         "hook" => run_hook_install(),
+        // "" | "install" (and any flag like --profile) falls through to run().
+        "update" | "uninstall" => run_lifecycle_stub(&arg),
         _ => run(),
     };
     if let Err(e) = result {
@@ -63,6 +66,24 @@ fn run_hook_install() -> io::Result<()> {
     hook::install(&hook::cwd(), &exe)?;
     log("Hook de pre-commit instalado (verifica el proyecto antes de cada commit).");
     Ok(())
+}
+
+/// `rig-install update | uninstall` — honest stub for this unit (T3): the real
+/// implementations land next (T4 update, T5 uninstall). Both verbs are
+/// non-interactive by design — the profile and the installed-state truth come
+/// from the receipt written at install time, never from a prompt — so the
+/// receipt is loaded first (its absence is itself the answer) and then we fail
+/// honestly instead of pretending.
+fn run_lifecycle_stub(verb: &str) -> io::Result<()> {
+    match receipt::load() {
+        Ok(r) => log(&format!(
+            "{verb}: receipt presente (perfil {}, {} paquetes)",
+            r.profile,
+            r.apt.len()
+        )),
+        Err(e) => log(&format!("{verb}: sin receipt legible ({e})")),
+    }
+    Err(io::Error::other("no implementado aun (siguiente unidad)"))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -89,15 +110,52 @@ fn run() -> io::Result<()> {
         .ok_or_else(|| io::Error::other("gestor no soportado (no hay apt, pkg ni brew)"))?;
     log(&format!("Gestor de paquetes: {}", pkgmgr.name));
 
-    install_system_packages(&pkgmgr, profile)?;
+    let apt = install_system_packages(&pkgmgr, profile)?;
     ensure_fd_bat_symlinks();
     binaries::install_all(profile)?;
     ensure_chezmoi()?;
     apply_dotfiles(profile)?;
-    set_login_shell_zsh();
+    let login_shell_changed = set_login_shell_zsh();
     ensure_work_dir();
 
+    write_receipt(profile, &pkgmgr, apt, login_shell_changed)?;
     log("Instalacion completa.");
+    Ok(())
+}
+
+/// Record the install receipt — the truth the future update/uninstall verbs
+/// read (S3): profile, package manager plus the packages it installed, the
+/// downloaded-binary manifest, toolchains, chezmoi dotfiles, login-shell
+/// change and ~/work. Reached only when every step of run() succeeded, so a
+/// failed install leaves no receipt behind.
+fn write_receipt(
+    profile: Profile,
+    mgr: &PkgMgr,
+    apt: Vec<String>,
+    login_shell_changed: bool,
+) -> io::Result<()> {
+    let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| io::Error::other(format!("reloj del sistema invalido: {e}")))?
+        .as_secs();
+    let receipt = receipt::Receipt {
+        component: "rig".into(),
+        schema: 1,
+        installed_at_unix: unix.to_string(),
+        installed_at_iso: receipt::iso_utc(unix),
+        profile: profile.as_str().into(),
+        pkgmgr: mgr.name.into(),
+        apt,
+        bins: binaries::manifest(&home),
+        dirs: vec!["~/.local/node".into()],
+        toolchains: vec!["rustup".into(), "uv".into(), "go".into()],
+        dotfiles: "chezmoi".into(),
+        login_shell_changed,
+        work_dir: true,
+    };
+    receipt::save(&receipt)?;
+    log("Receipt escrito (~/.local/share/prim/rig.receipt.json).");
     Ok(())
 }
 
@@ -106,17 +164,18 @@ fn run() -> io::Result<()> {
 /// `chsh`. No-op if zsh is missing or already the login shell. Tries sudo first
 /// (passwordless on a typical VPS); falls back to plain `chsh`, which may prompt
 /// for the password once. Non-fatal: a failure only means the user keeps their
-/// current shell and can run `zsh` by hand.
-fn set_login_shell_zsh() {
+/// current shell and can run `zsh` by hand. Returns true only when the shell
+/// was actually changed (recorded in the install receipt).
+fn set_login_shell_zsh() -> bool {
     let Some(zsh) = which_path("zsh") else {
         log("zsh no encontrado; no se cambia el shell de login.");
-        return;
+        return false;
     };
     let zsh = zsh.to_string_lossy().to_string();
 
     // Already the login shell? (SHELL reflects the login shell in practice.)
     if std::env::var("SHELL").map(|s| s == zsh).unwrap_or(false) {
-        return;
+        return false;
     }
 
     log(&format!("Configurando zsh como shell de login ({zsh})..."));
@@ -129,14 +188,15 @@ fn set_login_shell_zsh() {
             .unwrap_or(false);
     if sudo_ok {
         log("Shell de login = zsh (via sudo). Reconecta para que tome efecto.");
-        return;
+        return true;
     }
     // Fallback: plain chsh (may prompt for the password once).
     if run_cmd("chsh", &["-s", &zsh]).is_ok() {
         log("Shell de login = zsh. Reconecta para que tome efecto.");
-    } else {
-        log("No se pudo cambiar el shell de login (continuo). Ejecuta 'zsh' manualmente o 'chsh -s $(which zsh)'.");
+        return true;
     }
+    log("No se pudo cambiar el shell de login (continuo). Ejecuta 'zsh' manualmente o 'chsh -s $(which zsh)'.");
+    false
 }
 
 /// ~/work is where organizations live (one directory per git account, managed
@@ -268,10 +328,12 @@ fn which(bin: &str) -> bool {
 /// Parse packages/system.txt and install the packages for this profile using
 /// the detected manager's column. Columns: 0=id 1=profile 2=apt 3=pkg 4=brew.
 /// A "-" means "not available in that manager". Skips comments and blanks.
+/// Returns the packages that were (to be) installed — recorded in the install
+/// receipt so a future uninstall can remove exactly those.
 ///
 /// The package list is embedded at compile time (include_str!) so the binary is
 /// standalone: it does not need the devlab repo cloned on the target host.
-fn install_system_packages(mgr: &PkgMgr, profile: Profile) -> io::Result<()> {
+fn install_system_packages(mgr: &PkgMgr, profile: Profile) -> io::Result<Vec<String>> {
     let text = include_str!("data/system.txt");
 
     let pkgs = select_packages(text, mgr.column, profile.as_str());
@@ -282,10 +344,11 @@ fn install_system_packages(mgr: &PkgMgr, profile: Profile) -> io::Result<()> {
             profile.as_str(),
             mgr.name
         ));
-        return Ok(());
+        return Ok(Vec::new());
     }
     log(&format!("Instalando ({}): {}", mgr.name, pkgs.join(" ")));
-    run_pkg_install(mgr, &pkgs)
+    run_pkg_install(mgr, &pkgs)?;
+    Ok(pkgs)
 }
 
 /// Pure selector: given the file text, the manager column and the profile,

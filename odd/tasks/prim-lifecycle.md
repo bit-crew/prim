@@ -24,6 +24,8 @@ owns its logic and script. Scope this round: prim + rig (harness next round).
 
 ### Routes (delegation evidence)
 
+- Slices: A=88 (fixes), B=~480 (prim lifecycle verbs — single delegated unit, not split further), C=T3, D=T4+T5, E=T6 docs+suite. Commits: A=b3efa6b, B=2bf81cc.
+
 - Commit A (fixes): inline — bounded single check (b3efa6b).
 - T1+T2 → gentle-ai-worker background `mw063gu6-1-xgiz` (Writer rule: parallelism + Context backstop at 150k tokens; surfaces: src/main.rs, src/lifecycle.rs, install.sh).
 - T3 → gentle-ai-worker background `mw063gue-2-jt44` (same triggers; surfaces: rig/install.sh, rig/installer/src/{main,binaries,receipt}.rs).
