@@ -22,6 +22,14 @@ owns its logic and script. Scope this round: prim + rig (harness next round).
 | T5 | S1,S3(a),S4 | rig-install uninstall: receipt-driven, apt remove, dotfiles purge, shell restore | |
 | T6 | S1-S5 | docs (rig/docs/lifecycle.md) + sandbox verification suite | |
 
+### Routes (delegation evidence)
+
+- Commit A (fixes): inline — bounded single check (b3efa6b).
+- T1+T2 → gentle-ai-worker background `mw063gu6-1-xgiz` (Writer rule: parallelism + Context backstop at 150k tokens; surfaces: src/main.rs, src/lifecycle.rs, install.sh).
+- T3 → gentle-ai-worker background `mw063gue-2-jt44` (same triggers; surfaces: rig/install.sh, rig/installer/src/{main,binaries,receipt}.rs).
+- T4/T5: sequential after T3 (depend on receipt.rs API); route decided when T3 lands.
+- T6: parent inline (docs + end-to-end sandbox suite + work-unit commits).
+
 ## Log
 
 - L1 (2026-11-03, user): "para que sea realmente utilizable, este debería de permitir no solo instalar sino tambien actualizar e incluso desinstalar, no te parece, comomhacemos eso, hay uan forma mejor de abordarlo, eso si me gustaría que cada pieza tenga su propio script es decir si solo uso el rig solo se instale"
