@@ -181,8 +181,15 @@ fn run_uninstall() -> io::Result<()> {
         }
     }
 
-    // 2. Recorded binaries.
+    // 2. Recorded binaries (S4: only inside rig-owned roots).
     for b in &r.bins {
+        if !rig_owned(&home, &b.path) {
+            log(&format!(
+                "S4: {} fuera de las raices de rig; no se borra (receipt editado a mano?)",
+                b.path
+            ));
+            continue;
+        }
         let p = Path::new(&b.path);
         if p.is_file() {
             match std::fs::remove_file(p) {
@@ -195,6 +202,12 @@ fn run_uninstall() -> io::Result<()> {
     // 3. Recorded dirs (stored "~"-relative, e.g. ~/.local/node).
     for d in &r.dirs {
         let p = expand_tilde(&home, d);
+        if !rig_owned(&home, &p.to_string_lossy()) {
+            log(&format!(
+                "S4: {d} fuera de las raices de rig; no se borra (receipt editado a mano?)"
+            ));
+            continue;
+        }
         if p.is_dir() {
             match std::fs::remove_dir_all(&p) {
                 Ok(()) => removed.push(format!("dir {d}")),
@@ -836,6 +849,41 @@ fn remove_cmd(pkgmgr: &str, pkgs: &[String]) -> Option<(String, Vec<String>)> {
 
 /// Expand a receipt "~"-relative path against the real home (receipts store
 /// user-readable values like "~/.local/node").
+/// rig-owned removal roots (S4): everything rig installs lives under these.
+const ROOTS: [&str; 8] = [
+    ".local/bin",
+    ".local/node",
+    ".local/go",
+    ".local/share",
+    ".config/chezmoi",
+    ".cargo",
+    ".rustup",
+    "go/bin",
+];
+
+/// S4 structural guard: may rig remove this path? Only "~/..." or
+/// absolute-under-home paths confined to rig-owned roots pass. User data
+/// (~/work, ~/.ssh, ...), ".." escapes, CWD-relative paths and anything
+/// outside $HOME are refused — even from a hand-edited receipt.
+pub(crate) fn rig_owned(home: &Path, s: &str) -> bool {
+    let rel = if let Some(r) = s.strip_prefix("~/") {
+        r.to_string()
+    } else if let Some(h) = home.to_str() {
+        match s.strip_prefix(&format!("{h}/")) {
+            Some(r) => r.to_string(),
+            None => return false,
+        }
+    } else {
+        return false;
+    };
+    if rel.split('/').any(|c| c == ".." || c.is_empty()) {
+        return false;
+    }
+    ROOTS
+        .iter()
+        .any(|r| rel == *r || rel.starts_with(&format!("{r}/")))
+}
+
 fn expand_tilde(home: &Path, s: &str) -> PathBuf {
     if let Some(rest) = s.strip_prefix("~/") {
         home.join(rest)
@@ -848,7 +896,7 @@ fn expand_tilde(home: &Path, s: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_tilde, remove_cmd, select_packages};
+    use super::{expand_tilde, remove_cmd, rig_owned, select_packages};
     use std::path::{Path, PathBuf};
 
     // Mirrors packages/system.txt shape: id profile apt pkg brew
@@ -912,6 +960,38 @@ age             dc1     age            age        age
     fn remove_cmd_unknown_manager_is_none() {
         assert!(remove_cmd("apt-sim", &["git".into()]).is_none());
         assert!(remove_cmd("", &[]).is_none());
+    }
+
+    #[test]
+    fn rig_owned_rejects_user_data_and_escapes() {
+        let home = Path::new("/home/u");
+        for s in [
+            "~/.ssh",
+            "~/work",
+            "~/work/proj",
+            "../../",
+            "../..",
+            "~/.ssh/../work",
+            "/etc/passwd",
+            "/home/u",
+            "/home/u/work/proj",
+            "~/",
+            "",
+        ] {
+            assert!(!rig_owned(home, s), "must reject {s}");
+        }
+        for s in [
+            "~/.local/node",
+            "~/.local/bin/hx",
+            "~/.local/share/chezmoi",
+            "~/.rustup",
+            "~/.cargo",
+            "~/go/bin/lazysql",
+            "/home/u/.local/bin/hx",
+            "/home/u/.local/share/uv",
+        ] {
+            assert!(rig_owned(home, s), "must accept {s}");
+        }
     }
 
     #[test]

@@ -587,7 +587,16 @@ fn refresh_group(e: &Env, arch: Arch, bins: &mut [Bin], i: usize) {
     for &j in &group {
         let p = Path::new(&bins[j].path);
         if p.is_file() {
-            let _ = std::fs::remove_file(p);
+            // S4: never remove a path outside rig-owned roots, even on update
+            // (a hand-edited receipt must not turn update into deletion).
+            if crate::rig_owned(&e.home, &bins[j].path) {
+                let _ = std::fs::remove_file(p);
+            } else {
+                note(&format!(
+                    "S4: {} fuera de las raices de rig; no se borra",
+                    bins[j].path
+                ));
+            }
         }
     }
     install_by_name(e, arch, &bins[i].name);

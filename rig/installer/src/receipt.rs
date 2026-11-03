@@ -269,7 +269,13 @@ fn parse(text: &str) -> io::Result<Receipt> {
         let (key, val) = split_field(line)?;
         match key.as_str() {
             "component" => r.component = unquote(&val)?,
-            "schema" => r.schema = val.parse().map_err(|_| bad(&format!("schema: {val}")))?,
+            "schema" => {
+                let n: u32 = val.parse().map_err(|_| bad(&format!("schema: {val}")))?;
+                if n != 1 {
+                    return Err(bad(&format!("schema no soportado: {n} (esperado 1)")));
+                }
+                r.schema = n;
+            }
             "installed_at_unix" => r.installed_at_unix = unquote(&val)?,
             "installed_at_iso" => r.installed_at_iso = unquote(&val)?,
             "profile" => r.profile = unquote(&val)?,
@@ -434,6 +440,28 @@ mod tests {
         };
         save_to(&path, &r).unwrap();
         assert_eq!(load_from(&path).unwrap(), r);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn malformed_receipt_fails_closed() {
+        let dir = scratch("malformed");
+        let path = dir.join("rig.receipt.json");
+        std::fs::write(&path, "{\"component\": \"rig\",\n  \"schema\": 1 GARBAGE").unwrap();
+        let err = load_from(&path).unwrap_err();
+        assert!(err.to_string().contains("receipt invalido"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_schema_is_rejected() {
+        let dir = scratch("schema");
+        let path = dir.join("rig.receipt.json");
+        let mut r = sample();
+        r.schema = 2;
+        save_to(&path, &r).unwrap();
+        let err = load_from(&path).unwrap_err();
+        assert!(err.to_string().contains("schema no soportado"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
