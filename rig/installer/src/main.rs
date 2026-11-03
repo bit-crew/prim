@@ -42,7 +42,8 @@ fn main() {
         "verify" => run_verify(),
         "hook" => run_hook_install(),
         // "" | "install" (and any flag like --profile) falls through to run().
-        "update" | "uninstall" => run_lifecycle_stub(&arg),
+        "update" => run_update(),
+        "uninstall" => run_uninstall(),
         _ => run(),
     };
     if let Err(e) = result {
@@ -68,22 +69,232 @@ fn run_hook_install() -> io::Result<()> {
     Ok(())
 }
 
-/// `rig-install update | uninstall` — honest stub for this unit (T3): the real
-/// implementations land next (T4 update, T5 uninstall). Both verbs are
-/// non-interactive by design — the profile and the installed-state truth come
-/// from the receipt written at install time, never from a prompt — so the
-/// receipt is loaded first (its absence is itself the answer) and then we fail
-/// honestly instead of pretending.
-fn run_lifecycle_stub(verb: &str) -> io::Result<()> {
-    match receipt::load() {
-        Ok(r) => log(&format!(
-            "{verb}: receipt presente (perfil {}, {} paquetes)",
-            r.profile,
-            r.apt.len()
-        )),
-        Err(e) => log(&format!("{verb}: sin receipt legible ({e})")),
+/// `rig-install update` (T4): bring an existing install to its latest state,
+/// driven by the receipt (profile, installed packages, recorded binaries).
+/// Every step is non-fatal; the run finishes by writing a FRESH receipt with
+/// new timestamps, the versions actually installed and the fresh package list.
+fn run_update() -> io::Result<()> {
+    ensure_install_path();
+
+    // Profile from the receipt. Without one: prompt on a TTY, refuse when
+    // non-interactive (there is nothing recorded to update).
+    let mut bins: Vec<receipt::Bin> = Vec::new();
+    let mut apt: Vec<String> = Vec::new();
+    let mut shell_changed = false;
+    let mut prev_pkgmgr = String::new();
+    let profile = match receipt::load() {
+        Ok(r) => {
+            bins = r.bins;
+            apt = r.apt;
+            shell_changed = r.login_shell_changed;
+            prev_pkgmgr = r.pkgmgr;
+            parse_profile(&r.profile)?
+        }
+        Err(e) if io::stdin().is_terminal() => {
+            log(&format!("sin receipt legible ({e}); se preguntara el perfil."));
+            resolve_profile()?
+        }
+        Err(e) => {
+            return Err(io::Error::other(format!(
+                "sin receipt legible ({e}) y sin TTY para preguntar: instala una vez primero (rig-install install)"
+            )))
+        }
+    };
+    log(&format!("Actualizando (perfil {})", profile.as_str()));
+
+    // System packages: for apt/pkg/brew, installing again is upgrading. On
+    // failure keep the receipt's previous list (the best truth available).
+    let mgr = detect_pkgmgr();
+    if let Some(m) = &mgr {
+        match install_system_packages(m, profile) {
+            Ok(fresh) => apt = fresh,
+            Err(e) => log(&format!("actualizacion de paquetes fallo ({e}; continuo)")),
+        }
+    } else {
+        log("gestor de paquetes no detectado; se omiten los paquetes del sistema.");
     }
-    Err(io::Error::other("no implementado aun (siguiente unidad)"))
+
+    ensure_fd_bat_symlinks();
+    binaries::update_bins(&mut bins);
+    binaries::upgrade_uv_tools();
+    binaries::reinstall_npm_lsps();
+    binaries::ensure_cargo_tools(profile);
+    binaries::update_rustup();
+    log("Toolchain go: no se toca en update (reinstalalo a mano si necesitas otra version).");
+
+    if let Err(e) = ensure_chezmoi().and_then(|()| apply_dotfiles(profile)) {
+        log(&format!("dotfiles: fallo ({e}; continuo)"));
+    }
+    // Sticky: once rig changed the login shell, the receipt keeps recording it
+    // so a later uninstall restores bash even when update found zsh already set.
+    shell_changed |= set_login_shell_zsh();
+    ensure_work_dir();
+
+    let pkgmgr_name = match &mgr {
+        Some(m) => m.name,
+        None if !prev_pkgmgr.is_empty() => prev_pkgmgr.as_str(),
+        None => "desconocido",
+    };
+    write_receipt(profile, pkgmgr_name, apt, bins, shell_changed)?;
+    log("Actualizacion completa.");
+    Ok(())
+}
+
+/// `rig-install uninstall` (T5): remove exactly what the receipt recorded —
+/// nothing else. User data is never touched (S4): the protected notice is
+/// printed first and the final summary restates what was kept.
+fn run_uninstall() -> io::Result<()> {
+    let r = receipt::load().map_err(|e| {
+        io::Error::other(format!(
+            "no se pudo leer el receipt ({e}); no se desinstala nada. Instala primero (rig-install install)."
+        ))
+    })?;
+    let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
+
+    log("Desinstalando rig (el receipt es la unica fuente de verdad).");
+    log("Datos protegidos, nunca se tocan: ~/work, claves SSH de ~/.ssh, archivos .env.local, repos y datos de agentes.");
+
+    let mut removed: Vec<String> = Vec::new();
+    let mut manual: Vec<String> = Vec::new();
+
+    // 1. System packages (S3a): manager-specific remove, non-fatal.
+    if !r.apt.is_empty() {
+        match remove_cmd(&r.pkgmgr, &r.apt) {
+            Some((prog, args)) => {
+                log(&format!(
+                    "Quitando {} paquetes de {}...",
+                    r.apt.len(),
+                    r.pkgmgr
+                ));
+                let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                if run_cmd(&prog, &refs).is_ok() {
+                    removed.push(format!("paquetes de {} ({})", r.pkgmgr, r.apt.len()));
+                } else {
+                    manual.push(format!("{prog} {}", args.join(" ")));
+                }
+            }
+            None => log(&format!(
+                "gestor '{}' no soportado para remove; quita a mano si hace falta: {}",
+                r.pkgmgr,
+                r.apt.join(" ")
+            )),
+        }
+    }
+
+    // 2. Recorded binaries.
+    for b in &r.bins {
+        let p = Path::new(&b.path);
+        if p.is_file() {
+            match std::fs::remove_file(p) {
+                Ok(()) => removed.push(format!("bin {}", b.name)),
+                Err(e) => log(&format!("no se pudo borrar {} ({e}; continuo)", b.path)),
+            }
+        }
+    }
+
+    // 3. Recorded dirs (stored "~"-relative, e.g. ~/.local/node).
+    for d in &r.dirs {
+        let p = expand_tilde(&home, d);
+        if p.is_dir() {
+            match std::fs::remove_dir_all(&p) {
+                Ok(()) => removed.push(format!("dir {d}")),
+                Err(e) => log(&format!(
+                    "no se pudo borrar {} ({e}; continuo)",
+                    p.display()
+                )),
+            }
+        }
+    }
+
+    // 4. Recorded toolchains.
+    let has = |n: &str| r.toolchains.iter().any(|t| t.as_str() == n);
+    if has("rustup") && home.join(".rustup").is_dir() {
+        log("rustup self uninstall (borra ~/.rustup y ~/.cargo)...");
+        if run_cmd("rustup", &["self", "uninstall", "-y"]).is_ok() {
+            removed.push("toolchain rustup (~/.rustup, ~/.cargo)".into());
+        } else {
+            manual.push("rustup self uninstall -y".into());
+        }
+    }
+    if has("go") {
+        let g = home.join(".local").join("go");
+        if g.is_dir() && std::fs::remove_dir_all(&g).is_ok() {
+            removed.push("toolchain go (~/.local/go)".into());
+        }
+    }
+    if has("uv") {
+        let bin = home.join(".local").join("bin").join("uv");
+        let data = home.join(".local").join("share").join("uv");
+        let mut gone = false;
+        if bin.is_file() {
+            gone |= std::fs::remove_file(&bin).is_ok();
+        }
+        if data.is_dir() {
+            gone |= std::fs::remove_dir_all(&data).is_ok();
+        }
+        if gone {
+            removed.push("toolchain uv (~/.local/bin/uv, ~/.local/share/uv)".into());
+        }
+    }
+
+    // 5. Dotfiles: chezmoi's own state (not the applied files in ~). The
+    // direct removals below also cover the case where the chezmoi binary is
+    // already gone.
+    if which("chezmoi") {
+        if run_cmd("chezmoi", &["purge", "--force"]).is_ok() {
+            removed.push("estado de chezmoi (purge)".into());
+        } else {
+            manual.push("chezmoi purge --force".into());
+        }
+    }
+    let cz_bin = home.join(".local").join("bin").join("chezmoi");
+    if cz_bin.is_file() && std::fs::remove_file(&cz_bin).is_ok() {
+        removed.push("bin chezmoi".into());
+    }
+    for (label, dir) in [
+        ("~/.config/chezmoi", home.join(".config").join("chezmoi")),
+        (
+            "~/.local/share/chezmoi",
+            home.join(".local").join("share").join("chezmoi"),
+        ),
+    ] {
+        if dir.is_dir() && std::fs::remove_dir_all(&dir).is_ok() {
+            removed.push(format!("estado de chezmoi ({label})"));
+        }
+    }
+
+    // 6. Login shell back to bash, only if rig changed it and it is still zsh.
+    if r.login_shell_changed && std::env::var("SHELL").is_ok_and(|s| s.ends_with("zsh")) {
+        let user = std::env::var("USER").unwrap_or_default();
+        if !user.is_empty() && run_cmd("sudo", &["-n", "chsh", "-s", "/bin/bash", &user]).is_ok() {
+            log("Shell de login devuelto a /bin/bash. Reconecta para que tome efecto.");
+            removed.push("cambio de shell de login".into());
+        } else {
+            log("no se pudo restaurar el shell; ejecuta: sudo chsh -s /bin/bash $USER");
+            manual.push("sudo chsh -s /bin/bash $USER".into());
+        }
+    }
+
+    // 7. The receipt itself, always last.
+    match receipt::receipt_path() {
+        Ok(p) if p.is_file() => match std::fs::remove_file(&p) {
+            Ok(()) => removed.push("receipt".into()),
+            Err(e) => log(&format!("no se pudo borrar el receipt ({e}; continuo)")),
+        },
+        _ => log("no habia receipt que borrar."),
+    }
+
+    log(&format!(
+        "Eliminado ({}): {}",
+        removed.len(),
+        removed.join(", ")
+    ));
+    if !manual.is_empty() {
+        log(&format!("Pendiente manual: {}", manual.join("; ")));
+    }
+    log("Conservado (protegido): ~/work, ~/.ssh, archivos .env.local, repos y datos de agentes.");
+    log("Desinstalacion de rig completa.");
+    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -118,7 +329,14 @@ fn run() -> io::Result<()> {
     let login_shell_changed = set_login_shell_zsh();
     ensure_work_dir();
 
-    write_receipt(profile, &pkgmgr, apt, login_shell_changed)?;
+    let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
+    write_receipt(
+        profile,
+        pkgmgr.name,
+        apt,
+        binaries::manifest(&home),
+        login_shell_changed,
+    )?;
     log("Instalacion completa.");
     Ok(())
 }
@@ -127,14 +345,15 @@ fn run() -> io::Result<()> {
 /// read (S3): profile, package manager plus the packages it installed, the
 /// downloaded-binary manifest, toolchains, chezmoi dotfiles, login-shell
 /// change and ~/work. Reached only when every step of run() succeeded, so a
-/// failed install leaves no receipt behind.
+/// failed install leaves no receipt behind. Update reuses it with the bins it
+/// refreshed and the freshly installed package list.
 fn write_receipt(
     profile: Profile,
-    mgr: &PkgMgr,
+    pkgmgr_name: &str,
     apt: Vec<String>,
+    bins: Vec<receipt::Bin>,
     login_shell_changed: bool,
 ) -> io::Result<()> {
-    let home = dirs::home_dir().ok_or_else(|| io::Error::other("sin HOME"))?;
     let unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| io::Error::other(format!("reloj del sistema invalido: {e}")))?
@@ -145,9 +364,9 @@ fn write_receipt(
         installed_at_unix: unix.to_string(),
         installed_at_iso: receipt::iso_utc(unix),
         profile: profile.as_str().into(),
-        pkgmgr: mgr.name.into(),
+        pkgmgr: pkgmgr_name.into(),
         apt,
-        bins: binaries::manifest(&home),
+        bins,
         dirs: vec!["~/.local/node".into()],
         toolchains: vec!["rustup".into(), "uv".into(), "go".into()],
         dotfiles: "chezmoi".into(),
@@ -596,9 +815,41 @@ fn prompt(msg: &str) -> io::Result<String> {
     Ok(line.trim_end_matches(['\n', '\r']).to_string())
 }
 
+// --- lifecycle helpers (T4/T5) ----------------------------------------------
+
+/// Manager-specific removal command for the receipt's packages (S3a).
+/// None = unknown manager: the caller skips removal with a warning instead of
+/// guessing (a receipt from another machine must not drive a blind remove).
+fn remove_cmd(pkgmgr: &str, pkgs: &[String]) -> Option<(String, Vec<String>)> {
+    let build = |prog: &str, pre: &[&str]| {
+        let mut args: Vec<String> = pre.iter().map(|s| s.to_string()).collect();
+        args.extend(pkgs.iter().cloned());
+        Some((prog.to_string(), args))
+    };
+    match pkgmgr {
+        "apt" => build("sudo", &["-n", "apt-get", "remove", "-y"]),
+        "pkg" => build("pkg", &["remove", "-y"]),
+        "brew" => build("brew", &["uninstall"]),
+        _ => None,
+    }
+}
+
+/// Expand a receipt "~"-relative path against the real home (receipts store
+/// user-readable values like "~/.local/node").
+fn expand_tilde(home: &Path, s: &str) -> PathBuf {
+    if let Some(rest) = s.strip_prefix("~/") {
+        home.join(rest)
+    } else if s == "~" {
+        home.to_path_buf()
+    } else {
+        PathBuf::from(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::select_packages;
+    use super::{expand_tilde, remove_cmd, select_packages};
+    use std::path::{Path, PathBuf};
 
     // Mirrors packages/system.txt shape: id profile apt pkg brew
     const SAMPLE: &str = "\
@@ -640,5 +891,37 @@ age             dc1     age            age        age
         let got = select_packages(SAMPLE, 3, "vps");
         assert_eq!(got, vec!["git", "openssh", "openjdk-21"]);
         assert!(!got.iter().any(|p| p.starts_with('#')));
+    }
+
+    #[test]
+    fn remove_cmd_builds_manager_specific_removal() {
+        let (prog, args) = remove_cmd("apt", &["git".into(), "zsh".into()]).unwrap();
+        assert_eq!(prog, "sudo");
+        assert_eq!(args, vec!["-n", "apt-get", "remove", "-y", "git", "zsh"]);
+
+        let (prog, args) = remove_cmd("pkg", &["git".into()]).unwrap();
+        assert_eq!(prog, "pkg");
+        assert_eq!(args, vec!["remove", "-y", "git"]);
+
+        let (prog, args) = remove_cmd("brew", &["git".into()]).unwrap();
+        assert_eq!(prog, "brew");
+        assert_eq!(args, vec!["uninstall", "git"]);
+    }
+
+    #[test]
+    fn remove_cmd_unknown_manager_is_none() {
+        assert!(remove_cmd("apt-sim", &["git".into()]).is_none());
+        assert!(remove_cmd("", &[]).is_none());
+    }
+
+    #[test]
+    fn expand_tilde_resolves_receipt_paths() {
+        let home = Path::new("/tmp/h");
+        assert_eq!(
+            expand_tilde(home, "~/.local/node"),
+            PathBuf::from("/tmp/h/.local/node")
+        );
+        assert_eq!(expand_tilde(home, "~"), PathBuf::from("/tmp/h"));
+        assert_eq!(expand_tilde(home, "/abs/path"), PathBuf::from("/abs/path"));
     }
 }

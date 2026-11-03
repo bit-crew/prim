@@ -76,7 +76,7 @@ pub fn install_all(profile: Profile) -> io::Result<()> {
     install_node(&e, arch);
     install_go(&e, arch);
     install_lazysql();
-    install_npm_lsps(&e);
+    npm_lsps(&e, false);
     install_uv_tools();
     install_yazi(&e, arch);
     install_codelldb(&e);
@@ -352,12 +352,16 @@ fn install_uv_tools() {
 // --- helix ------------------------------------------------------------------
 
 /// Helix editor: official binary tarball (includes runtime). Pinned version.
+/// Helix editor: official binary tarball (includes runtime). Pinned version,
+/// shared with the update version-check so both agree on what "current" is.
+const HELIX_VERSION: &str = "25.01.1";
+
 fn install_helix(e: &Env, arch: Arch) {
     if which("hx") {
         return;
     }
     note("Instalando Helix (binario oficial)...");
-    let ver = "25.01.1";
+    let ver = HELIX_VERSION;
     let a = if arch.is_x86() { "x86_64" } else { "aarch64" };
     let Ok(tmp) = tmpdir() else { return };
     let url = format!(
@@ -480,6 +484,162 @@ pub fn manifest(home: &Path) -> Vec<Bin> {
             repo: Some("jorgerojas26/lazysql".into()),
         },
     ]
+}
+
+// --- update (T4): version-check the receipt bins against upstream ------------
+
+/// Latest upstream version for a receipt bin: the pinned Helix release for hx,
+/// the Node dist index for node, the GitHub latest tag through the recorded
+/// repo otherwise. None when there is no version source or the network fails.
+fn latest_for(b: &Bin) -> Option<String> {
+    match b.name.as_str() {
+        "hx" => Some(HELIX_VERSION.to_string()),
+        "node" => node_latest_version(),
+        _ => b.repo.as_deref().and_then(latest_github_version),
+    }
+}
+
+/// Re-run the installer of a recorded bin by name (reuses the install_* fns).
+fn install_by_name(e: &Env, arch: Arch, name: &str) {
+    match name {
+        "hx" => install_helix(e, arch),
+        "herdr" => install_herdr(),
+        "lazygit" => install_lazygit(e, arch),
+        "delta" => install_delta(e, arch),
+        "marksman" => install_marksman(e, arch),
+        "yazi" | "ya" => install_yazi(e, arch),
+        "codelldb" => install_codelldb(e),
+        "lazysql" => install_lazysql(),
+        "node" => install_node(e, arch),
+        other => note(&format!("sin instalador para '{other}' (continuo)")),
+    }
+}
+
+/// Version-check every recorded bin (S3b): reinstall when the upstream latest
+/// differs from the recorded version or the recorded path is missing, then
+/// record the version actually installed. Bins with no resolvable upstream
+/// version (no repo, network down) reinstall only when missing. Non-fatal.
+pub fn update_bins(bins: &mut [Bin]) {
+    let Some(arch) = detect_arch() else {
+        note("Arquitectura no soportada; se omite la actualizacion de binarios.");
+        return;
+    };
+    let Ok(e) = env() else {
+        note("sin HOME; se omite la actualizacion de binarios.");
+        return;
+    };
+    for i in 0..bins.len() {
+        refresh_group(&e, arch, bins, i);
+    }
+}
+
+/// Decide and refresh the install group of `bins[i]` (yazi+ya ship in one
+/// archive, so they update together). Removing the old path first matters:
+/// every installer is which()-gated, so the stale binary must be gone for the
+/// reinstall to actually run.
+fn refresh_group(e: &Env, arch: Arch, bins: &mut [Bin], i: usize) {
+    if !INSTALLABLE.contains(&bins[i].name.as_str()) {
+        note(&format!(
+            "sin instalador para '{}'; se omite (continuo)",
+            bins[i].name
+        ));
+        return;
+    }
+    let group: Vec<usize> = bins
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| same_group(&b.name, &bins[i].name))
+        .map(|(j, _)| j)
+        .collect();
+
+    // Decide: any member outdated (upstream latest differs from the recorded
+    // version) or missing on disk triggers a reinstall of the whole group.
+    let mut latest: Vec<Option<String>> = Vec::with_capacity(group.len());
+    let mut need = false;
+    for &j in &group {
+        let b = &bins[j];
+        let missing = !Path::new(&b.path).is_file();
+        match latest_for(b) {
+            Some(v) => {
+                if b.version.as_deref() != Some(v.as_str()) || missing {
+                    need = true;
+                }
+                latest.push(Some(v));
+            }
+            None => {
+                if missing {
+                    need = true;
+                }
+                latest.push(None);
+            }
+        }
+    }
+    if !need {
+        return;
+    }
+
+    let names = group
+        .iter()
+        .map(|&j| bins[j].name.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    note(&format!("Actualizando {names}..."));
+    for &j in &group {
+        let p = Path::new(&bins[j].path);
+        if p.is_file() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    install_by_name(e, arch, &bins[i].name);
+    // Record the version each member now has; a failed install (path still
+    // missing) keeps the previous record instead of lying.
+    for (k, &j) in group.iter().enumerate() {
+        if Path::new(&bins[j].path).is_file() {
+            if let Some(v) = &latest[k] {
+                bins[j].version = Some(v.clone());
+            }
+        }
+    }
+}
+
+/// `uv tool upgrade` for the uv-managed tools that are installed (non-fatal).
+pub fn upgrade_uv_tools() {
+    if !which("uv") {
+        return;
+    }
+    for tool in ["ruff", "pudb"] {
+        if which(tool) {
+            note(&format!("uv tool upgrade {tool}..."));
+            if !run_ok("uv", &["tool", "upgrade", tool]) {
+                note(&format!("fallo uv tool upgrade {tool} (continuo)"));
+            }
+        }
+    }
+}
+
+/// npm LSPs: re-run the global installs so npm fetches the latest (the usual
+/// which() skip would leave an existing install stale).
+pub fn reinstall_npm_lsps() {
+    let Ok(e) = env() else { return };
+    npm_lsps(&e, true);
+}
+
+/// Cargo tools (eza, zoxide, ..., bacon from cargo.txt): the install helpers
+/// are which()-gated, so re-running them only reinstalls what went missing.
+pub fn ensure_cargo_tools(profile: Profile) {
+    install_cargo_tools();
+    install_cargo_txt_tools(profile);
+}
+
+/// `rustup update` when rustup is present (non-fatal).
+pub fn update_rustup() {
+    if !which("rustup") {
+        return;
+    }
+    note("rustup update...");
+    if !run_ok("rustup", &["update"]) {
+        note("fallo rustup update (continuo)");
+    }
 }
 
 // --- lazygit ----------------------------------------------------------------
@@ -739,7 +899,9 @@ fn install_lazysql() {
 // --- npm LSPs ---------------------------------------------------------------
 
 /// basedpyright + yaml-language-server via npm (global under ~/.local).
-fn install_npm_lsps(e: &Env) {
+/// `force` re-runs the installs even when the binaries exist: npm install -g
+/// upgrades in place, so update uses it to fetch the latest versions.
+fn npm_lsps(e: &Env, force: bool) {
     let npm = e.home.join(".local").join("node").join("bin").join("npm");
     let npm_s = if npm.is_file() {
         npm.to_str().unwrap().to_string()
@@ -754,7 +916,7 @@ fn install_npm_lsps(e: &Env) {
         ("basedpyright-langserver", "basedpyright"),
         ("yaml-language-server", "yaml-language-server"),
     ] {
-        if !which(bin) {
+        if force || !which(bin) {
             note(&format!("npm install -g {pkg}..."));
             if !run_ok(
                 &npm_s,
@@ -1228,9 +1390,23 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
+// --- update support (T4): names install_by_name can (re)install ----------
+
+/// Dispatch table for `install_by_name`. Every `manifest()` entry must appear
+/// here (pinned by test) so every recorded bin has an update path.
+const INSTALLABLE: &[&str] = &[
+    "hx", "herdr", "lazygit", "delta", "marksman", "yazi", "ya", "codelldb", "lazysql", "node",
+];
+
+/// yazi and ya ship in one archive: they form a single install group.
+fn same_group(a: &str, b: &str) -> bool {
+    a == b || matches!((a, b), ("yazi", "ya") | ("ya", "yazi"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{select_cargo_items, version_key};
+    use super::{manifest, same_group, select_cargo_items, version_key, INSTALLABLE};
+    use std::path::Path;
 
     #[test]
     fn version_key_parses_segments() {
@@ -1283,5 +1459,26 @@ bar-dc1 dc1
                 ("bar-dc1".to_string(), false),
             ]
         );
+    }
+
+    #[test]
+    fn manifest_names_are_all_dispatchable() {
+        for b in manifest(Path::new("/tmp/fake-home")) {
+            assert!(
+                INSTALLABLE.contains(&b.name.as_str()),
+                "{} no tiene instalador en install_by_name",
+                b.name
+            );
+        }
+    }
+
+    #[test]
+    fn same_group_only_links_the_yazi_pair() {
+        assert!(same_group("yazi", "ya"));
+        assert!(same_group("ya", "yazi"));
+        assert!(same_group("hx", "hx"));
+        assert!(!same_group("hx", "ya"));
+        assert!(!same_group("yazi", "lazygit"));
+        assert!(!same_group("hx", "herdr"));
     }
 }
