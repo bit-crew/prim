@@ -124,18 +124,20 @@ fn new_org(name: &str) -> io::Result<()> {
     // carries [user] + [core] sshCommand bound to this org's key. -F /dev/null
     // isolates from ~/.ssh/config; IdentitiesOnly keeps the agent from offering
     // other keys. The global gitconfig (home-manager) includes orgs.config,
-    // which holds one includeIf "gitdir:~/work/<org>/" per org. Write-once.
+    // which holds one includeIf "gitdir:~/work/<org>/" per org. Re-running in
+    // a terminal re-prompts identity with current values as defaults.
     let gitconfig = home.join(format!(".gitconfig-{name}"));
-    if gitconfig.exists() {
-        println!("[prim org] ~/.gitconfig-{name} ya existe; se conserva.");
+    let exists = gitconfig.exists();
+    let (gname, gemail) = org_git_identity(&home, name, exists);
+    if !exists {
+        write_org_gitconfig(&gitconfig, name, &gname, &gemail)?;
+    } else if gname != git_user_field(&gitconfig, "name")
+        || gemail != git_user_field(&gitconfig, "email")
+    {
+        write_org_gitconfig(&gitconfig, name, &gname, &gemail)?;
+        println!("[prim org] ~/.gitconfig-{name}: identidad actualizada.");
     } else {
-        let (gname, gemail) = org_git_identity(&home);
-        fs::write(
-            &gitconfig,
-            format!(
-                "[user]\n    name = {gname}\n    email = {gemail}\n\n[core]\n    # clave de la organizacion {name} (prim org)\n    sshCommand = \"ssh -i ~/.ssh/id_ed25519_{name} -o IdentitiesOnly=yes -F /dev/null\"\n"
-            ),
-        )?;
+        println!("[prim org] ~/.gitconfig-{name} ya existe; se conserva.");
     }
     register_org_include(&home, name)?;
 
@@ -161,17 +163,40 @@ fn new_org(name: &str) -> io::Result<()> {
 
 /// Git identity for a new org: prompt when interactive (defaults from
 /// ~/.config/prim/identity.toml, placeholders as last resort).
-fn org_git_identity(home: &Path) -> (String, String) {
+/// Read one `key = value` line from a gitconfig's [user] section (first
+/// match, quotes trimmed); "" when absent.
+fn git_user_field(path: &Path, key: &str) -> String {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .find_map(|l| l.trim_start().strip_prefix(&format!("{key} =")))
+        .map(|v| v.trim().trim_matches('"').to_string())
+        .unwrap_or_default()
+}
+
+/// Git identity for an org: prompt when interactive (defaults: the org's
+/// current ~/.gitconfig-<org> values, then ~/.config/prim/identity.toml,
+/// then placeholders — so re-running SUGGESTS the current values and Enter
+/// keeps them). Non-interactive returns the defaults untouched.
+fn org_git_identity(home: &Path, name: &str, _exists: bool) -> (String, String) {
+    let gitconfig = home.join(format!(".gitconfig-{name}"));
+    let cur = |k: &str| {
+        let v = git_user_field(&gitconfig, k);
+        (!v.is_empty()).then_some(v)
+    };
     let text = fs::read_to_string(home.join(".config/prim/identity.toml")).unwrap_or_default();
-    let field = |k: &str, d: &str| {
+    let idt = |k: &str| {
         text.lines()
             .find_map(|l| l.strip_prefix(&format!("{k} =")))
             .map(|v| v.trim().trim_matches('"').to_string())
             .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| d.to_string())
     };
-    let dname = field("git_name", "devlab");
-    let demail = field("git_email", "devlab@localhost");
+    let dname = cur("name")
+        .or_else(|| idt("git_name"))
+        .unwrap_or_else(|| "devlab".into());
+    let demail = cur("email")
+        .or_else(|| idt("git_email"))
+        .unwrap_or_else(|| "devlab@localhost".into());
     if !io::stdin().is_terminal() {
         return (dname, demail);
     }
@@ -190,6 +215,18 @@ fn org_git_identity(home: &Path) -> (String, String) {
     (
         prompt("nombre git de la org", &dname),
         prompt("email git de la org", &demail),
+    )
+}
+
+/// Write the org's gitconfig: [user] identity + [core] sshCommand bound to
+/// the org key (-F /dev/null isolates from ~/.ssh/config, IdentitiesOnly
+/// keeps the agent from offering other keys).
+fn write_org_gitconfig(path: &Path, name: &str, gname: &str, gemail: &str) -> io::Result<()> {
+    fs::write(
+        path,
+        format!(
+            "[user]\n    name = {gname}\n    email = {gemail}\n\n[core]\n    # clave de la organizacion {name} (prim org)\n    sshCommand = \"ssh -i ~/.ssh/id_ed25519_{name} -o IdentitiesOnly=yes -F /dev/null\"\n"
+        ),
     )
 }
 
