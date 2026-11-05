@@ -10,8 +10,9 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
+use crate::receipt::Bin;
 use crate::{which, Profile};
 
 const BLUE: &str = "\x1b[1;34m";
@@ -75,16 +76,21 @@ pub fn install_all(profile: Profile) -> io::Result<()> {
     install_node(&e, arch);
     install_go(&e, arch);
     install_lazysql();
-    install_npm_lsps(&e);
+    npm_lsps(&e, false);
     install_uv_tools();
     install_yazi(&e, arch);
-    install_nerd_font(&e);
+    install_codelldb(&e);
+    // Nerd font only on the client (dc1): fonts render in the local terminal,
+    // so a copy on a headless VPS (SSH) is dead weight.
+    if profile != Profile::Vps {
+        install_nerd_font(&e);
+    }
 
     // Multiplexer: Herdr on both profiles. It is the agent-aware multiplexer on
     // the VPS (drives Moshi over SSH) and a complete, lighter multiplexer with
     // saved layouts for offline manual work on the client. One tool, both cases.
     install_herdr();
-    install_prim(&e, arch);
+    // prim's permanent binary is owned by prim itself (S5); root install.sh installs it.
 
     if profile == Profile::Vps {
         install_vps_infra(&e, arch);
@@ -346,12 +352,16 @@ fn install_uv_tools() {
 // --- helix ------------------------------------------------------------------
 
 /// Helix editor: official binary tarball (includes runtime). Pinned version.
+/// Helix editor: official binary tarball (includes runtime). Pinned version,
+/// shared with the update version-check so both agree on what "current" is.
+const HELIX_VERSION: &str = "25.01.1";
+
 fn install_helix(e: &Env, arch: Arch) {
     if which("hx") {
         return;
     }
     note("Instalando Helix (binario oficial)...");
-    let ver = "25.01.1";
+    let ver = HELIX_VERSION;
     let a = if arch.is_x86() { "x86_64" } else { "aarch64" };
     let Ok(tmp) = tmpdir() else { return };
     let url = format!(
@@ -407,30 +417,237 @@ fn install_herdr() {
     }
 }
 
-// --- prim (this repo's orchestrator) ----------------------------------------
+// --- receipt manifest --------------------------------------------------------
 
-/// The prim binary itself: component selector + organization management
-/// (`prim org new|secret|list`). CI publishes it to this repo's "latest"
-/// prerelease (prim-x86_64-linux / prim-aarch64-linux), the same release
-/// rig-install comes from. Straight into ~/.local/bin (already on PATH).
-fn install_prim(e: &Env, arch: Arch) {
-    if which("prim") {
+/// Static manifest of the tools this module installs from upstream (not via a
+/// package manager): install path plus the GitHub repo for version checks.
+/// Recorded in the install receipt; `version` stays None until the update unit
+/// (T4) threads real versions in. lazysql is the one exception to ~/.local/bin:
+/// `go install` places it in GOPATH/bin (~/go/bin).
+pub fn manifest(home: &Path) -> Vec<Bin> {
+    let bin = home.join(".local").join("bin");
+    let go_bin = home.join("go").join("bin");
+    let at = |p: PathBuf| p.to_string_lossy().into_owned();
+    vec![
+        Bin {
+            name: "hx".into(),
+            path: at(bin.join("hx")),
+            version: None,
+            repo: Some("helix-editor/helix".into()),
+        },
+        Bin {
+            name: "herdr".into(),
+            path: at(bin.join("herdr")),
+            version: None,
+            repo: None, // installed by herdr.dev's own script
+        },
+        Bin {
+            name: "lazygit".into(),
+            path: at(bin.join("lazygit")),
+            version: None,
+            repo: Some("jesseduffield/lazygit".into()),
+        },
+        Bin {
+            name: "delta".into(),
+            path: at(bin.join("delta")),
+            version: None,
+            repo: Some("dandavison/delta".into()),
+        },
+        Bin {
+            name: "marksman".into(),
+            path: at(bin.join("marksman")),
+            version: None,
+            repo: Some("artempyanykh/marksman".into()),
+        },
+        Bin {
+            name: "yazi".into(),
+            path: at(bin.join("yazi")),
+            version: None,
+            repo: Some("sxyazi/yazi".into()),
+        },
+        Bin {
+            name: "ya".into(),
+            path: at(bin.join("ya")),
+            version: None,
+            repo: Some("sxyazi/yazi".into()),
+        },
+        Bin {
+            name: "codelldb".into(),
+            path: at(bin.join("codelldb")),
+            version: None,
+            repo: Some("vadimcn/codelldb".into()),
+        },
+        Bin {
+            name: "lazysql".into(),
+            path: at(go_bin.join("lazysql")),
+            version: None,
+            repo: Some("jorgerojas26/lazysql".into()),
+        },
+    ]
+}
+
+// --- update (T4): version-check the receipt bins against upstream ------------
+
+/// Latest upstream version for a receipt bin: the pinned Helix release for hx,
+/// the Node dist index for node, the GitHub latest tag through the recorded
+/// repo otherwise. None when there is no version source or the network fails.
+fn latest_for(b: &Bin) -> Option<String> {
+    match b.name.as_str() {
+        "hx" => Some(HELIX_VERSION.to_string()),
+        "node" => node_latest_version(),
+        _ => b.repo.as_deref().and_then(latest_github_version),
+    }
+}
+
+/// Re-run the installer of a recorded bin by name (reuses the install_* fns).
+fn install_by_name(e: &Env, arch: Arch, name: &str) {
+    match name {
+        "hx" => install_helix(e, arch),
+        "herdr" => install_herdr(),
+        "lazygit" => install_lazygit(e, arch),
+        "delta" => install_delta(e, arch),
+        "marksman" => install_marksman(e, arch),
+        "yazi" | "ya" => install_yazi(e, arch),
+        "codelldb" => install_codelldb(e),
+        "lazysql" => install_lazysql(),
+        "node" => install_node(e, arch),
+        other => note(&format!("sin instalador para '{other}' (continuo)")),
+    }
+}
+
+/// Version-check every recorded bin (S3b): reinstall when the upstream latest
+/// differs from the recorded version or the recorded path is missing, then
+/// record the version actually installed. Bins with no resolvable upstream
+/// version (no repo, network down) reinstall only when missing. Non-fatal.
+pub fn update_bins(bins: &mut [Bin]) {
+    let Some(arch) = detect_arch() else {
+        note("Arquitectura no soportada; se omite la actualizacion de binarios.");
+        return;
+    };
+    let Ok(e) = env() else {
+        note("sin HOME; se omite la actualizacion de binarios.");
+        return;
+    };
+    for i in 0..bins.len() {
+        refresh_group(&e, arch, bins, i);
+    }
+}
+
+/// Decide and refresh the install group of `bins[i]` (yazi+ya ship in one
+/// archive, so they update together). Removing the old path first matters:
+/// every installer is which()-gated, so the stale binary must be gone for the
+/// reinstall to actually run.
+fn refresh_group(e: &Env, arch: Arch, bins: &mut [Bin], i: usize) {
+    if !INSTALLABLE.contains(&bins[i].name.as_str()) {
+        note(&format!(
+            "sin instalador para '{}'; se omite (continuo)",
+            bins[i].name
+        ));
         return;
     }
-    note("Instalando prim (gestor de organizaciones)...");
-    let suffix = if arch.is_x86() {
-        "x86_64-linux"
-    } else {
-        "aarch64-linux"
-    };
-    let url = format!("https://github.com/bit-crew/prim/releases/download/latest/prim-{suffix}");
-    let dest = e.local_bin.join("prim");
-    if download(&url, &dest) {
-        chmod_x(&dest);
-        note("prim instalado (~/.local/bin/prim).");
-    } else {
-        note("no se pudo descargar prim (continuo)");
-        let _ = std::fs::remove_file(&dest);
+    let group: Vec<usize> = bins
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| same_group(&b.name, &bins[i].name))
+        .map(|(j, _)| j)
+        .collect();
+
+    // Decide: any member outdated (upstream latest differs from the recorded
+    // version) or missing on disk triggers a reinstall of the whole group.
+    let mut latest: Vec<Option<String>> = Vec::with_capacity(group.len());
+    let mut need = false;
+    for &j in &group {
+        let b = &bins[j];
+        let missing = !Path::new(&b.path).is_file();
+        match latest_for(b) {
+            Some(v) => {
+                if b.version.as_deref() != Some(v.as_str()) || missing {
+                    need = true;
+                }
+                latest.push(Some(v));
+            }
+            None => {
+                if missing {
+                    need = true;
+                }
+                latest.push(None);
+            }
+        }
+    }
+    if !need {
+        return;
+    }
+
+    let names = group
+        .iter()
+        .map(|&j| bins[j].name.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    note(&format!("Actualizando {names}..."));
+    for &j in &group {
+        let p = Path::new(&bins[j].path);
+        if p.is_file() {
+            // S4: never remove a path outside rig-owned roots, even on update
+            // (a hand-edited receipt must not turn update into deletion).
+            if crate::rig_owned(&e.home, &bins[j].path) {
+                let _ = std::fs::remove_file(p);
+            } else {
+                note(&format!(
+                    "S4: {} fuera de las raices de rig; no se borra",
+                    bins[j].path
+                ));
+            }
+        }
+    }
+    install_by_name(e, arch, &bins[i].name);
+    // Record the version each member now has; a failed install (path still
+    // missing) keeps the previous record instead of lying.
+    for (k, &j) in group.iter().enumerate() {
+        if Path::new(&bins[j].path).is_file() {
+            if let Some(v) = &latest[k] {
+                bins[j].version = Some(v.clone());
+            }
+        }
+    }
+}
+
+/// `uv tool upgrade` for the uv-managed tools that are installed (non-fatal).
+pub fn upgrade_uv_tools() {
+    if !which("uv") {
+        return;
+    }
+    for tool in ["ruff", "pudb"] {
+        if which(tool) {
+            note(&format!("uv tool upgrade {tool}..."));
+            if !run_ok("uv", &["tool", "upgrade", tool]) {
+                note(&format!("fallo uv tool upgrade {tool} (continuo)"));
+            }
+        }
+    }
+}
+
+/// npm LSPs: re-run the global installs so npm fetches the latest (the usual
+/// which() skip would leave an existing install stale).
+pub fn reinstall_npm_lsps() {
+    let Ok(e) = env() else { return };
+    npm_lsps(&e, true);
+}
+
+/// Cargo tools (eza, zoxide, ..., bacon from cargo.txt): the install helpers
+/// are which()-gated, so re-running them only reinstalls what went missing.
+pub fn ensure_cargo_tools(profile: Profile) {
+    install_cargo_tools();
+    install_cargo_txt_tools(profile);
+}
+
+/// `rustup update` when rustup is present (non-fatal).
+pub fn update_rustup() {
+    if !which("rustup") {
+        return;
+    }
+    note("rustup update...");
+    if !run_ok("rustup", &["update"]) {
+        note("fallo rustup update (continuo)");
     }
 }
 
@@ -691,7 +908,9 @@ fn install_lazysql() {
 // --- npm LSPs ---------------------------------------------------------------
 
 /// basedpyright + yaml-language-server via npm (global under ~/.local).
-fn install_npm_lsps(e: &Env) {
+/// `force` re-runs the installs even when the binaries exist: npm install -g
+/// upgrades in place, so update uses it to fetch the latest versions.
+fn npm_lsps(e: &Env, force: bool) {
     let npm = e.home.join(".local").join("node").join("bin").join("npm");
     let npm_s = if npm.is_file() {
         npm.to_str().unwrap().to_string()
@@ -706,7 +925,7 @@ fn install_npm_lsps(e: &Env) {
         ("basedpyright-langserver", "basedpyright"),
         ("yaml-language-server", "yaml-language-server"),
     ] {
-        if !which(bin) {
+        if force || !which(bin) {
             note(&format!("npm install -g {pkg}..."));
             if !run_ok(
                 &npm_s,
@@ -756,6 +975,57 @@ fn install_yazi(e: &Env, arch: Arch) {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+// --- codelldb --------------------------------------------------------------
+
+/// codelldb: the Rust DAP that the helix debug config references
+/// (languages.toml, :debug-start). Orphaned when the run_once scripts were
+/// ported to Rust — this restores it. Ships as a VSIX (a zip); the standalone
+/// binary lives at extension/adapter2/codelldb.
+fn install_codelldb(e: &Env) {
+    if which("codelldb") {
+        return;
+    }
+    let Some(ver) = latest_github_version("vadimcn/codelldb") else {
+        note("no se pudo resolver version de codelldb (continuo)");
+        return;
+    };
+    note(&format!("Instalando codelldb {ver} (DAP de Rust)..."));
+    let a = if detect_arch().map(|x| x.is_x86()).unwrap_or(true) {
+        "x86_64"
+    } else {
+        "aarch64"
+    };
+    let Ok(tmp) = tmpdir() else { return };
+    let url = format!(
+        "https://github.com/vadimcn/codelldb/releases/download/v{ver}/codelldb-{a}-linux.vsix"
+    );
+    let vsix = tmp.join("codelldb.vsix");
+    if download(&url, &vsix)
+        && run_ok(
+            "unzip",
+            &[
+                "-qo",
+                vsix.to_str().unwrap(),
+                "extension/adapter2/codelldb",
+                "-d",
+                tmp.to_str().unwrap(),
+            ],
+        )
+    {
+        let from = tmp.join("extension").join("adapter2").join("codelldb");
+        let dst = e.local_bin.join("codelldb");
+        if std::fs::copy(&from, &dst).is_ok() {
+            chmod_x(&dst);
+            note("codelldb instalado en ~/.local/bin/codelldb");
+        } else {
+            note("no se pudo copiar codelldb (continuo)");
+        }
+    } else {
+        note("no se pudo instalar codelldb (continuo)");
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 // --- nerd font --------------------------------------------------------------
 
 fn install_nerd_font(e: &Env) {
@@ -792,6 +1062,15 @@ fn install_nerd_font(e: &Env) {
 /// VPS-only infra tools. The agent stack is Pi + gentle-ai: Pi is the base
 /// coding agent (gentle-ai refuses to run without it), so it is installed
 /// before gentle-ai. kiro-cli is intentionally NOT installed anymore.
+/// Called by `update` on the vps profile: re-run the infra installers. All are
+/// presence-gated and gcloud is health-gated, so this also repairs a corrupt
+/// install instead of skipping it forever.
+pub fn refresh_vps_infra() {
+    let Some(arch) = detect_arch() else { return };
+    let Ok(e) = env() else { return };
+    install_vps_infra(&e, arch);
+}
+
 fn install_vps_infra(e: &Env, arch: Arch) {
     note("Perfil vps: instalando infra...");
     install_aws(e, arch);
@@ -999,8 +1278,18 @@ fn install_wrangler(e: &Env) {
 /// bucket, download, extract to ~/.local, run its install.sh, symlink binaries.
 /// Mirrors run_once_15 (uses the storage.googleapis.com mirror, reliable).
 fn install_gcloud(e: &Env, arch: Arch) {
-    if which("gcloud") {
+    if gcloud_healthy() {
         return;
+    }
+    // which()-resolvable but broken (e.g. the pre-Rust installer's per-tool
+    // check once overwrote bin/{gcloud,gsutil} with "OK <name> -" text):
+    // wipe the corrupt SDK and links, then reinstall from scratch.
+    if which("gcloud") {
+        note("gcloud existe pero no responde (instalacion corrupta); reparando...");
+        let _ = std::fs::remove_dir_all(e.home.join(".local").join("google-cloud-sdk"));
+        for bin in ["gcloud", "gsutil"] {
+            let _ = std::fs::remove_file(e.local_bin.join(bin));
+        }
     }
     note("Instalando Google Cloud SDK (binario oficial)...");
     // gcloud archive arch label: x86_64 or arm.
@@ -1044,6 +1333,19 @@ fn install_gcloud(e: &Env, arch: Arch) {
         note("fallo extrayendo gcloud SDK (continuo)");
     }
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// True when gcloud resolves AND runs. A corrupt install that still satisfies
+/// which() must not satisfy the gate, or it never gets repaired.
+fn gcloud_healthy() -> bool {
+    which("gcloud")
+        && Command::new("gcloud")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
 }
 
 /// List the official cloud-sdk-release bucket and pick the newest linux archive
@@ -1129,9 +1431,23 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
+// --- update support (T4): names install_by_name can (re)install ----------
+
+/// Dispatch table for `install_by_name`. Every `manifest()` entry must appear
+/// here (pinned by test) so every recorded bin has an update path.
+const INSTALLABLE: &[&str] = &[
+    "hx", "herdr", "lazygit", "delta", "marksman", "yazi", "ya", "codelldb", "lazysql", "node",
+];
+
+/// yazi and ya ship in one archive: they form a single install group.
+fn same_group(a: &str, b: &str) -> bool {
+    a == b || matches!((a, b), ("yazi", "ya") | ("ya", "yazi"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{select_cargo_items, version_key};
+    use super::{manifest, same_group, select_cargo_items, version_key, INSTALLABLE};
+    use std::path::Path;
 
     #[test]
     fn version_key_parses_segments() {
@@ -1184,5 +1500,26 @@ bar-dc1 dc1
                 ("bar-dc1".to_string(), false),
             ]
         );
+    }
+
+    #[test]
+    fn manifest_names_are_all_dispatchable() {
+        for b in manifest(Path::new("/tmp/fake-home")) {
+            assert!(
+                INSTALLABLE.contains(&b.name.as_str()),
+                "{} no tiene instalador en install_by_name",
+                b.name
+            );
+        }
+    }
+
+    #[test]
+    fn same_group_only_links_the_yazi_pair() {
+        assert!(same_group("yazi", "ya"));
+        assert!(same_group("ya", "yazi"));
+        assert!(same_group("hx", "hx"));
+        assert!(!same_group("hx", "ya"));
+        assert!(!same_group("yazi", "lazygit"));
+        assert!(!same_group("hx", "herdr"));
     }
 }

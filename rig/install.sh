@@ -13,7 +13,10 @@
 #   1) Cliente (este equipo)  -> baja y ejecuta el binario aqui (perfil dc1)
 #   2) VPS remoto             -> se conecta por SSH y lo instala alla (perfil vps)
 #
-# Tambien acepta el rol como argumento:  sh install.sh dc1   |   sh install.sh vps
+# Verbos del ciclo de vida (S2): el primer argumento es el verbo
+# install|update|uninstall (default install); prim lo reenvia como
+# "sh -s -- update". El rol va detras del verbo:  sh install.sh update dc1
+# (y sin verbo sigue funcionando igual que siempre:  sh install.sh dc1).
 
 set -eu
 
@@ -107,9 +110,13 @@ install_local() {
     fi
 
     chmod +x "$_bin"
-    log "Ejecutando rig-install --profile ${_profile}..."
-    DEVLAB_PROFILE="$_profile" "$_bin" --profile "$_profile"
-    log "Instalacion local completa (perfil ${_profile})."
+    log "Ejecutando rig-install ${VERB} --profile ${_profile}..."
+    DEVLAB_PROFILE="$_profile" "$_bin" "$VERB" --profile "$_profile"
+    case "$VERB" in
+        install)   log "Instalacion local completa (perfil ${_profile})." ;;
+        update)    log "Actualizacion local completa (perfil ${_profile})." ;;
+        uninstall) log "Desinstalacion local completa (perfil ${_profile})." ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
@@ -144,10 +151,16 @@ install_vps_remote() {
 }
 
 # ---------------------------------------------------------------------------
-# Punto de entrada: preguntar rol (o aceptarlo como argumento).
-#   DEVLAB_ROLE=vps-local  -> salta la pregunta y hace install_local vps
-#   (lo usa el modo remoto cuando ya esta dentro del VPS).
+# Punto de entrada: verbo (S2) + rol (preguntar o aceptarlo como argumento).
+#   - verbo: install|update|uninstall (default install); se reenvia al binario.
+#   - DEVLAB_ROLE=vps-local -> salta la pregunta y hace install_local vps
+#     (lo usa el modo remoto cuando ya esta dentro del VPS; sin verbo -> install).
 # ---------------------------------------------------------------------------
+VERB="install"
+case "${1:-}" in
+    install|update|uninstall) VERB="$1"; shift ;;
+esac
+
 ROLE="${1:-${DEVLAB_ROLE:-}}"
 
 if [ "$ROLE" = "vps-local" ]; then

@@ -1,10 +1,14 @@
 //! prim — the umbrella orchestrator.
 //!
-//! A thin console selector: pick which components of the ecosystem to install
-//! and it downloads and runs each component's own `install.sh` from the
-//! monorepo. It does NOT bundle their logic — each component keeps its own
-//! lightweight installer, invoked on demand. This honors the install matrix:
-//! harness alone / rig+harness / core+harness / all.
+//! A thin console selector turned lifecycle manager: `prim` picks which
+//! components of the ecosystem to act on and downloads and runs each
+//! component's own `install.sh` from the monorepo, forwarding the verb
+//! (`install|update|uninstall`, default install). It does NOT bundle their
+//! logic — each component keeps its own lightweight installer, invoked on
+//! demand. This honors the install matrix: harness alone / rig+harness /
+//! core+harness / all. prim also self-owns its binary (~/.local/bin/prim):
+//! the root install.sh puts it there and `prim update` self-updates it from
+//! the repo's "latest" release before updating components.
 //!
 //! Each selected component's install.sh is fetched from raw.githubusercontent
 //! and piped to `sh`. Components installed in order: rig (environment) first,
@@ -13,12 +17,14 @@
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
+mod lifecycle;
 mod org;
 
 /// Base raw URL of the monorepo's main branch.
 const RAW_BASE: &str = "https://raw.githubusercontent.com/bit-crew/prim/main";
 
 /// A selectable component.
+#[derive(Clone, Copy)]
 struct Component {
     key: &'static str,
     name: &'static str,
@@ -59,13 +65,36 @@ fn main() {
         return;
     }
 
-    // Non-interactive shortcut: `prim <keys...>` (e.g. `prim rig harness`) or
-    // `prim all` skips the menu. Otherwise show the interactive selector.
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Explicit verbs; anything else is the back-compat path: bare component
+    // keys (`prim rig harness`) or the no-arg interactive selector.
+    match args.first().map(String::as_str) {
+        Some("install") => install_components(&args[1..]),
+        Some("update") => {
+            if args.len() != 1 {
+                eprintln!("uso: prim update  (sin argumentos; actualiza todo lo instalado)");
+                std::process::exit(2);
+            }
+            lifecycle::update();
+        }
+        Some("uninstall") => lifecycle::uninstall(&args[1..]),
+        Some("status") => {
+            if args.len() != 1 {
+                eprintln!("uso: prim status");
+                std::process::exit(2);
+            }
+            lifecycle::status();
+        }
+        _ => install_components(&args),
+    }
+}
+
+/// Install flow (also the back-compat bare-keys path): resolve the selection,
+/// ask the harness mode once, run each selected component's installer.
+fn install_components(args: &[String]) {
     let chosen = if args.is_empty() {
         interactive_select()
     } else {
-        resolve_selection(&args.join(" "))
+        select_from(COMPONENTS, &args.join(" "))
     };
 
     if chosen.is_empty() {
@@ -126,7 +155,7 @@ fn interactive_select() -> Vec<&'static str> {
     if io::stdin().read_line(&mut line).is_err() {
         return vec![];
     }
-    resolve_selection(line.trim())
+    select_from(COMPONENTS, line.trim())
 }
 
 /// Ask whether to install harness as agent runtime+skills or skills only.
@@ -143,20 +172,22 @@ fn ask_skills_only() -> bool {
     )
 }
 
-/// Map a raw selection string to component keys. 'a'/'all'/'todo' = everything
-/// that is shippable; otherwise 1-based indices or component keys by name.
-fn resolve_selection(input: &str) -> Vec<&'static str> {
+/// Map a raw selection string to keys from `list`. 'a'/'all'/'todo' = the
+/// whole list; otherwise 1-based indices (positions in `list`) or component
+/// keys by name. Used for both the install menu (all components) and the
+/// uninstall picker (installed components only).
+fn select_from(list: &[Component], input: &str) -> Vec<&'static str> {
     let lower = input.to_lowercase();
     if matches!(lower.as_str(), "a" | "all" | "todo") {
-        return COMPONENTS.iter().map(|c| c.key).collect();
+        return list.iter().map(|c| c.key).collect();
     }
     let mut out = Vec::new();
     for tok in lower.split([' ', ',']).filter(|s| !s.is_empty()) {
         if let Ok(n) = tok.parse::<usize>() {
-            if n >= 1 && n <= COMPONENTS.len() {
-                push_unique(&mut out, COMPONENTS[n - 1].key);
+            if n >= 1 && n <= list.len() {
+                push_unique(&mut out, list[n - 1].key);
             }
-        } else if let Some(c) = COMPONENTS.iter().find(|c| c.key == tok) {
+        } else if let Some(c) = list.iter().find(|c| c.key == tok) {
             push_unique(&mut out, c.key);
         }
     }
@@ -209,5 +240,26 @@ fn pipe_to_sh(script: &str, args: &[&str]) -> bool {
             c.wait().map(|s| s.success()).unwrap_or(false)
         }
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Selection accepts indices, keys, 'all', mixed separators, and drops
+    /// unknown tokens (the back-compat bare-keys contract).
+    #[test]
+    fn select_from_maps_tokens_to_keys() {
+        assert_eq!(select_from(COMPONENTS, "1 2"), vec!["rig", "harness"]);
+        assert_eq!(
+            select_from(COMPONENTS, "rig,harness"),
+            vec!["rig", "harness"]
+        );
+        assert_eq!(select_from(COMPONENTS, "RIG"), vec!["rig"]);
+        assert_eq!(select_from(COMPONENTS, "a"), vec!["rig", "harness", "core"]);
+        assert_eq!(select_from(COMPONENTS, "2 2"), vec!["harness"]);
+        assert!(select_from(COMPONENTS, "zzz").is_empty());
+        assert!(select_from(COMPONENTS, "9").is_empty());
     }
 }
