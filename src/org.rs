@@ -1,11 +1,14 @@
 //! prim org — manage organizations (one git account per org).
 //!
 //! An "organization" is a directory under ~/work with its own git identity:
-//! a dedicated SSH key (~/.ssh/id_ed25519_<org>) and a direnv environment
-//! (.envrc + .env.local) exporting GIT_SSH_COMMAND bound to that key. Entering
-//! ~/work/<org> makes every git operation use that org's account (GitHub,
-//! Bitbucket, ...). This module is the seed of prim's management surface:
-//! prim ends up as a binary that manages projects; `org` is its first command.
+//! a dedicated SSH key (~/.ssh/id_ed25519_<org>), a per-org ~/.gitconfig-<org>
+//! (user + core.sshCommand bound to that key, reached from the global config
+//! via includeIf in ~/.config/git/orgs.config), and a direnv environment
+//! (.envrc + .env.local) for the org's other environment and secrets. Any git
+//! operation under ~/work/<org> uses that org's account (GitHub, Bitbucket,
+//! ...) — no direnv needed, it is git-native. This module is the seed of
+//! prim's management surface: prim ends up as a binary that manages projects;
+//! `org` is its first command.
 //!
 //! Subcommands:
 //!   prim org new <NAME>         create/refresh the org environment (idempotent)
@@ -13,7 +16,7 @@
 //!   prim org list               list existing organizations
 
 use std::fs;
-use std::io;
+use std::io::{self, IsTerminal};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -68,8 +71,9 @@ fn valid_name(name: &str) -> bool {
 // --- org new ----------------------------------------------------------------
 
 /// Create or refresh an organization: ~/work/<name>, .envrc, SSH key,
-/// .env.local (never clobbered) + GIT_SSH_COMMAND, direnv allow. Idempotent:
-/// re-running preserves the existing key and every stored variable.
+/// .env.local (never clobbered), ~/.gitconfig-<name> + includeIf wiring,
+/// direnv allow. Idempotent: re-running preserves the existing key, the
+/// gitconfig and every stored variable.
 fn new_org(name: &str) -> io::Result<()> {
     if !valid_name(name) {
         return Err(io::Error::other(format!(
@@ -116,22 +120,24 @@ fn new_org(name: &str) -> io::Result<()> {
         chmod(&key.with_extension("pub"), 0o644);
     }
 
-    // Bind git to this org's key via direnv; append only if not already set.
-    let line = format!(
-        "GIT_SSH_COMMAND=\"ssh -i {} -o IdentitiesOnly=yes\"",
-        key.display()
-    );
-    let mut content = fs::read_to_string(&envlocal)?;
-    if !content.lines().any(|l| l.starts_with("GIT_SSH_COMMAND=")) {
-        if !content.is_empty() && !content.ends_with('\n') {
-            content.push('\n');
-        }
-        content.push_str(&line);
-        content.push('\n');
-        fs::write(&envlocal, &content)?;
+    // Per-org git identity (user's includeIf pattern): ~/.gitconfig-<org>
+    // carries [user] + [core] sshCommand bound to this org's key. -F /dev/null
+    // isolates from ~/.ssh/config; IdentitiesOnly keeps the agent from offering
+    // other keys. The global gitconfig (home-manager) includes orgs.config,
+    // which holds one includeIf "gitdir:~/work/<org>/" per org. Write-once.
+    let gitconfig = home.join(format!(".gitconfig-{name}"));
+    if gitconfig.exists() {
+        println!("[prim org] ~/.gitconfig-{name} ya existe; se conserva.");
     } else {
-        println!("[prim org] GIT_SSH_COMMAND ya existe; no se modifica.");
+        let (gname, gemail) = org_git_identity(&home);
+        fs::write(
+            &gitconfig,
+            format!(
+                "[user]\n    name = {gname}\n    email = {gemail}\n\n[core]\n    # clave de la organizacion {name} (prim org)\n    sshCommand = \"ssh -i ~/.ssh/id_ed25519_{name} -o IdentitiesOnly=yes -F /dev/null\"\n"
+            ),
+        )?;
     }
+    register_org_include(&home, name)?;
 
     direnv_allow(&dir);
 
@@ -147,9 +153,64 @@ fn new_org(name: &str) -> io::Result<()> {
     println!();
     println!("CLAVE PUBLICA (registrala en la cuenta/org de GitHub, Bitbucket, ...):");
     println!("{pubkey}");
-    println!("Con la clave registrada, clona dentro de la org y direnv aplicara");
-    println!("GIT_SSH_COMMAND automaticamente:  git clone git@github.com:{name}/repo.git");
+    println!("Con la clave registrada, clona dentro de la org — git usara la");
+    println!("identidad y la clave de {name} automaticamente (includeIf):");
+    println!("  git clone git@github.com:{name}/repo.git");
     Ok(())
+}
+
+/// Git identity for a new org: prompt when interactive (defaults from
+/// ~/.config/prim/identity.toml, placeholders as last resort).
+fn org_git_identity(home: &Path) -> (String, String) {
+    let text = fs::read_to_string(home.join(".config/prim/identity.toml")).unwrap_or_default();
+    let field = |k: &str, d: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k} =")))
+            .map(|v| v.trim().trim_matches('"').to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| d.to_string())
+    };
+    let dname = field("git_name", "devlab");
+    let demail = field("git_email", "devlab@localhost");
+    if !io::stdin().is_terminal() {
+        return (dname, demail);
+    }
+    let prompt = |q: &str, d: &str| -> String {
+        print!("[prim org] {q} [{d}]: ");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut line = String::new();
+        if io::stdin().read_line(&mut line).is_ok() {
+            let t = line.trim();
+            if !t.is_empty() {
+                return t.to_string();
+            }
+        }
+        d.to_string()
+    };
+    (
+        prompt("nombre git de la org", &dname),
+        prompt("email git de la org", &demail),
+    )
+}
+
+/// Append this org's includeIf block to ~/.config/git/orgs.config (prim-
+/// managed; the home-manager global gitconfig includes this file). Idempotent.
+fn register_org_include(home: &Path, name: &str) -> io::Result<()> {
+    let dir = home.join(".config").join("git");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("orgs.config");
+    let mut content = fs::read_to_string(&path).unwrap_or_default();
+    let needle = format!("gitdir:~/work/{name}/");
+    if content.contains(&needle) {
+        return Ok(());
+    }
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(&format!(
+        "[includeIf \"gitdir:~/work/{name}/\"]\n    path = ~/.gitconfig-{name}\n"
+    ));
+    fs::write(&path, content)
 }
 
 // --- org secret -------------------------------------------------------------

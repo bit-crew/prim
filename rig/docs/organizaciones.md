@@ -19,24 +19,30 @@ prim org list                 # lista las organizaciones
 prim org new globaltask
 ```
 
-Hace los seis pasos, sin pisar nada existente (puede re-ejecutarse):
+Hace los pasos sin pisar nada existente (puede re-ejecutarse):
 
 1. Crea `~/work/globaltask`.
 2. Crea `.envrc` (`dotenv_if_exists .env.local`).
 3. Genera la clave SSH de la org: `~/.ssh/id_ed25519_globaltask`
    (ed25519, sin passphrase; una por org y por máquina, nunca reutilizada).
-4. Crea `.env.local` con permisos `0600`, vacío si no existía.
-5. Agrega `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_globaltask -o IdentitiesOnly=yes"`
-   solo si no estaba.
-6. `direnv allow` sobre la carpeta.
+4. Crea `.env.local` con permisos `0600`, vacío si no existía (solo secretos).
+5. Escribe `~/.gitconfig-globaltask` con la identidad git de la org
+   (`[user]` nombre/email — pregunta al crear, usa defaults si no) y
+   `[core] sshCommand = "ssh -i ~/.ssh/id_ed25519_globaltask -o IdentitiesOnly=yes -F /dev/null"`.
+6. Agrega el bloque `includeIf "gitdir:~/work/globaltask/"` a
+   `~/.config/git/orgs.config` (el gitconfig global — gestionado por el
+   entorno — incluye ese archivo; patrón estándar de la industria).
+7. `direnv allow` sobre la carpeta.
 
 Al terminar imprime la **clave pública**: registrala en el proveedor como
 deploy key de la org (o en la cuenta de GitHub/Bitbucket de esa organización).
-Con eso, dentro de la carpeta:
+Con eso, cualquier git bajo la carpeta usa la identidad y la clave de la org
+**de forma nativa** (includeIf — no depende de direnv):
 
 ```
 cd ~/work/globaltask
-git clone git@github.com:globaltask/repo.git   # usa la clave de ESTA org
+git clone git@github.com:globaltask/repo.git   # identidad+clave de ESTA org
+git config user.email                          # lo confirma
 ```
 
 ## Secretos por organizacion
