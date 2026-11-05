@@ -10,6 +10,11 @@
 //! the root install.sh puts it there and `prim update` self-updates it from
 //! the repo's "latest" release before updating components.
 //!
+//! S8 self-sufficiency: before installing rig (explicit `prim install`,
+//! bare keys or the interactive selector), prim bootstraps the machine
+//! itself — apt update/upgrade, official Nix single-user install and the
+//! static identity file. `prim bootstrap` runs the same flow standalone.
+//!
 //! Each selected component's install.sh is fetched from raw.githubusercontent
 //! and piped to `sh`. Components installed in order: rig (environment) first,
 //! then harness (agent), then core — so the agent lands on a ready environment.
@@ -17,6 +22,7 @@
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
+mod bootstrap;
 mod lifecycle;
 mod org;
 
@@ -68,6 +74,16 @@ fn main() {
     // Explicit verbs; anything else is the back-compat path: bare component
     // keys (`prim rig harness`) or the no-arg interactive selector.
     match args.first().map(String::as_str) {
+        Some("bootstrap") => {
+            if args.len() != 1 {
+                eprintln!("uso: prim bootstrap  (sin argumentos)");
+                std::process::exit(2);
+            }
+            if let Err(e) = bootstrap::run() {
+                eprintln!("[prim] bootstrap fallo: {e}");
+                std::process::exit(1);
+            }
+        }
         Some("install") => install_components(&args[1..]),
         Some("update") => {
             if args.len() != 1 {
@@ -100,6 +116,15 @@ fn install_components(args: &[String]) {
     if chosen.is_empty() {
         eprintln!("[prim] nothing selected");
         std::process::exit(1);
+    }
+
+    // S8: prim is self-sufficient — when rig is selected, bootstrap the
+    // machine (apt, Nix, identity) once per invocation, before components.
+    if chosen.contains(&"rig") {
+        if let Err(e) = bootstrap::run() {
+            eprintln!("[prim] bootstrap fallo: {e}");
+            std::process::exit(1);
+        }
     }
 
     // Ask the harness install mode once, up front, if harness is selected.

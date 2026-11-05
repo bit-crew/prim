@@ -195,7 +195,7 @@ fn sha256_of(path: &Path) -> Option<String> {
 }
 
 /// Download `url` into `dest` with curl (IPv4 forced, like everywhere else).
-fn curl_to_file(url: &str, dest: &Path) -> bool {
+pub(crate) fn curl_to_file(url: &str, dest: &Path) -> bool {
     Command::new("curl")
         .args(["-4", "-fsSL", "-o"])
         .arg(dest)
