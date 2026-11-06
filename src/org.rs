@@ -26,7 +26,9 @@ pub fn run(args: &[String]) {
     let strs: Vec<&str> = args.iter().map(String::as_str).collect();
     let result = match strs.as_slice() {
         ["new", name] => new_org(name),
+        ["secret", name] => edit_secret(name),
         ["secret", name, kv] => secret(name, kv),
+        ["edit", name] => edit_secret(name),
         ["list"] => list(),
         _ => usage_error(),
     };
@@ -41,6 +43,8 @@ fn usage_error() -> io::Result<()> {
         "uso: prim org <comando>\n  \
             new <nombre>           crea/actualiza la organizacion (idempotente)\n  \
             secret <nombre> K=V    agrega o actualiza una variable en .env.local\n  \
+            secret <nombre>        abre .env.local en el editor (todos los secretos)\n  \
+            edit <nombre>          alias: abre .env.local en el editor\n  \
             list                   lista las organizaciones"
     );
     std::process::exit(2);
@@ -158,6 +162,15 @@ fn new_org(name: &str) -> io::Result<()> {
     println!("Con la clave registrada, clona dentro de la org — git usara la");
     println!("identidad y la clave de {name} automaticamente (includeIf):");
     println!("  git clone git@github.com:{name}/repo.git");
+    if io::stdin().is_terminal() {
+        println!();
+        println!("[prim org] abriendo .env.local para los secretos; cerrá el editor");
+        println!("[prim org] para activarlos (direnv allow + reload automaticos).");
+        edit_env_local(&home, name)?;
+    } else {
+        println!("[prim org] secretos: corre 'prim org secret {name}' (sin KEY=VALUE)");
+        println!("[prim org] para abrir el editor y cargarlos todos de una vez.");
+    }
     Ok(())
 }
 
@@ -248,6 +261,76 @@ fn register_org_include(home: &Path, name: &str) -> io::Result<()> {
         "[includeIf \"gitdir:~/work/{name}/\"]\n    path = ~/.gitconfig-{name}\n"
     ));
     fs::write(&path, content)
+}
+
+// --- editor flow ------------------------------------------------------------
+
+/// Open the org's .env.local in the user's editor ($VISUAL, $EDITOR, hx,
+/// nano — first available) so ALL secrets can be added at once, then run
+/// direnv allow + reload automatically (the human path; KEY=VALUE stays for
+/// scripts).
+fn edit_secret(name: &str) -> io::Result<()> {
+    home().and_then(|h| edit_env_local(&h, name))
+}
+
+fn edit_env_local(home: &Path, name: &str) -> io::Result<()> {
+    let dir = home.join("work").join(name);
+    if !dir.is_dir() {
+        return Err(io::Error::other(format!(
+            "la organizacion no existe: {} (corre: prim org new {name})",
+            dir.display()
+        )));
+    }
+    let envlocal = dir.join(".env.local");
+    if !envlocal.exists() {
+        fs::write(&envlocal, "")?;
+    }
+    chmod(&envlocal, 0o600);
+    println!("[prim org] editando {}", envlocal.display());
+    if !open_editor(&envlocal) {
+        println!(
+            "[prim org] sin editor disponible (VISUAL/EDITOR/hx/nano); edita {} a mano.",
+            envlocal.display()
+        );
+    }
+    direnv_allow(&dir);
+    direnv_reload(&dir);
+    Ok(())
+}
+
+/// Run the first available editor on `path` (VISUAL > EDITOR > hx > nano).
+/// True when one ran (any exit code — the file was open for editing).
+fn open_editor(path: &Path) -> bool {
+    let mut candidates: Vec<String> = ["VISUAL", "EDITOR"]
+        .iter()
+        .filter_map(|v| std::env::var(v).ok())
+        .filter(|v| !v.is_empty())
+        .collect();
+    candidates.extend(["hx".to_string(), "nano".to_string()]);
+    for ed in &candidates {
+        match Command::new(ed).arg(path).status() {
+            Ok(_) => return true,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => continue,
+        }
+    }
+    false
+}
+
+/// Best-effort `direnv reload` from inside the org dir (only works in a
+/// hooked shell; otherwise the allow message covers the next cd).
+fn direnv_reload(dir: &Path) {
+    let ok = Command::new("direnv")
+        .arg("reload")
+        .current_dir(dir)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok {
+        println!("[prim org] direnv: entorno recargado.");
+    } else {
+        println!("[prim org] direnv reload omitido (se recargara al entrar a la carpeta).");
+    }
 }
 
 // --- org secret -------------------------------------------------------------

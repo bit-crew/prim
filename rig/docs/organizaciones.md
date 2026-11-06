@@ -48,15 +48,21 @@ git config user.email                          # lo confirma
 ## Secretos por organizacion
 
 Los secretos (tokens, API keys) viven en `~/work/<org>/.env.local`, nunca en
-`.envrc` ni versionados. `prim org secret` modifica el archivo existente sin
-tocar las demás variables y re-autoriza direnv:
+`.envrc` ni versionados. Dos formas de cargarlos:
 
 ```
-prim org secret globaltask TURSO_API_KEY=xyz     # agrega
-prim org secret globaltask TURSO_API_KEY=abc     # actualiza
+prim org secret globaltask     # abre .env.local en tu editor (hx), cargas
+                               # TODOS los secretos de una, y al cerrar se
+                               # ejecuta direnv allow + reload solos
+prim org edit globaltask       # alias de lo mismo
+
+prim org secret globaltask TURSO_API_KEY=xyz   # sin editor: scripts/CI
+prim org secret globaltask TURSO_API_KEY=abc   # actualizar una variable
 ```
 
-direnv los carga al entrar a la carpeta (o con `direnv reload` si ya estás dentro).
+Al crear la organizacion (`prim org new`) el editor se abre solo al final
+(en sesiones interactivas) para que pegues los secretos de entrada; en
+sesiones script/CI no se abre nada.
 
 ## Aterrizaje en ~/work
 
