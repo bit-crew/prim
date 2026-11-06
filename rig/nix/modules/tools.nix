@@ -20,6 +20,7 @@
     fd
     fzf
     zsh
+    croc # ad-hoc encrypted file transfer to/from the VPS
 
     # terminal niceties
     eza
