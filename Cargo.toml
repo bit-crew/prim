@@ -1,6 +1,8 @@
 # Prim monorepo — Cargo workspace.
 # Root package = the orchestrator (the `prim` umbrella: install selector).
-# Members = each component's installer (rig, harness; core when it has code).
+# Members = each component's installer (harness; core when it has code).
+# rig has no installer crate since P5: prim activates it over Nix
+# directly (src/nix.rs) and rig/install.sh is a thin compat stub.
 [package]
 name = "prim"
 version = "0.1.0"
@@ -16,7 +18,7 @@ path = "src/main.rs"
 dirs = "5.0"
 
 [workspace]
-members = ["rig/installer", "harness/installer"]
+members = ["harness/installer"]
 
 [profile.release]
 opt-level = "z"

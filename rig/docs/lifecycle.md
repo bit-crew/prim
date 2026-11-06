@@ -1,55 +1,82 @@
-# Ciclo de vida — install / update / uninstall
+# Ciclo de vida — rig en la era Nix
 
-prim gestiona el ciclo de vida de cada pieza; cada pieza es dueña de su
-lógica (`install.sh` acepta `install|update|uninstall` como primer
-argumento, default `install`). prim solo reenvía el verbo a las piezas
-presentes en la máquina.
+Desde P5 rig no tiene instalador propio: prim lo activa sobre Nix
+(home-manager contra el flake global `rig/nix`), escribe su receipt y lo
+desinstala con `home-manager uninstall`. El binario rig-install y su
+workflow de build están retirados; `rig/install.sh` quedó solo como stub de
+compatibilidad que redirige al instalador raíz de prim (los viejos links
+siguen funcionando: `install|update|uninstall` se mapean a los verbos de
+prim).
 
 ```
-prim install [rig|harness|...]   # instala (selector interactivo sin args)
-prim update                      # 1) prim se auto-actualiza  2) update de cada pieza instalada
-prim uninstall <pieza>           # desinstala esa pieza (receipt-driven)
-prim status                      # versión de prim + receipts instalados
+prim install rig [--profile dc1|vps]  # bootstrap (os+nix+identidad) + home-manager switch + receipt
+prim update                           # 1) prim se auto-actualiza  2) re-activa rig (ref flotante a main)
+prim uninstall rig                    # home-manager uninstall + receipt fuera
+prim status                           # versión de prim + receipts instalados
+prim doctor [--prune]                 # diagnóstico de solo lectura; --prune = GC >30d
 ```
 
-También directo, sin prim: `sh rig/install.sh update` (o `uninstall`).
+## Qué hace cada verbo
+
+### `prim install rig`
+
+1. `prim bootstrap` (S8): apt update/upgrade, Nix single-user (instalador
+   oficial `--no-daemon`) e identidad estática en
+   `~/.config/prim/identity.toml`. Todo idempotente: cada paso ya presente
+   se omite.
+2. Activación: `nix run home-manager -- switch --flake
+   github:bit-crew/prim?dir=rig/nix#<perfil> -b prim-backup --impure`
+   (con `PRIM_GIT_NAME`/`PRIM_GIT_EMAIL` desde la identidad). Los
+   dotfiles preexistentes en conflicto se mueven a `*.prim-backup`, no se
+   sobreescriben.
+3. prim escribe el receipt.
+
+### `prim update`
+
+prim se auto-actualiza (release `latest`, sha256, salta si es idéntico) y
+re-activa rig: la ref `github:...` se re-evalúa contra main en cada
+ejecución, así que "update" es re-activar. El pin fino de versiones vive
+en el `flake.lock` del repo (S4): se mueve con `nix flake update` en el
+repo, no en la máquina.
+
+### `prim uninstall rig`
+
+`home-manager uninstall` y el receipt se borra. **No toca**: `/nix` (el
+store lo limpia el GC de nix, S5), `~/work`, `~/.ssh`, los `.env.local`,
+ni el stack del agente (harness). El binario `prim` tampoco se toca
+(`rm ~/.local/bin/prim` si lo querés fuera).
 
 ## Receipts (la fuente de verdad)
 
-Cada instalador escribe `~/.local/share/prim/<pieza>.receipt.json` con lo
-que hizo: perfil, gestor de paquetes, paquetes instalados, binarios con su
-versión y repo, directorios, toolchains, cambio de shell.
+`~/.local/share/prim/rig.receipt.json` — desde P3 lo escribe prim
+(nadie más): perfil, fecha, `pkgmgr: nix`, `dotfiles: home-manager`.
+Line-oriented, un campo por línea; un receipt ilegible hace que uninstall
+se niegue (fail-closed) en vez de adivinar. Sin receipt: `prim update`
+una vez y se regenera.
 
-- **Formato**: JSON válido pero *line-oriented* (un campo por línea). Lo
-  escriben y leen solo los instaladores de prim — no lo reescribas con
-  otra herramienta: un receipt ilegible hace que uninstall se niegue
-  (fail-closed) en vez de adivinar.
-- Máquina instalada antes de receipts: `prim update` una vez y el receipt
-  se genera.
+## doctor / prune
 
-## Qué hace `update`
+- `prim doctor`: diagnóstico de solo lectura — nix (versión y
+  experimental features), receipt del rig, reachability del flake global
+  (tolerante a timeouts de red), tamaño de `/nix/store`, GC roots de
+  direnv activos (`~/.local/share/direnv`) y restos de la era pre-Nix
+  (informativos; prim nunca los borra).
+- `prim doctor --prune`: `nix-collect-garbage --delete-older-than 30d`
+  (S1: el GC de nix es el dueño de la limpieza). Imprime el comando antes
+  de ejecutarlo; con `PRIM_DRY_RUN=1` lo muestra y no ejecuta nada.
 
-1. prim se auto-actualiza (release `latest`, sha256, salta si es idéntico).
-2. Reinstala los paquetes de sistema (idempotente = upgrade).
-3. Version-check de cada binario del receipt contra upstream (helix:
-   versión pineada; node: dist index; resto: última release del repo).
-   Solo re-descarga cuando difiere o falta.
-4. `uv tool upgrade`, LSPs de npm refrescados, `rustup update`, dotfiles
-   re-aplicados con chezmoi, receipt nuevo.
+## Migración desde la era rig-install
 
-Notas: el **primer** update tras una instalación pre-receipts re-descarga
-una vez los binarios con repo (versión registrada `null`); el toolchain de
-**go** no se toca en update; las herramientas de infra VPS (aws, gcloud,
-terraform, sops, wrangler) no están en el manifest y no se gestionan acá.
+Las máquinas instaladas con rig-install tienen restos que prim detecta
+con `prim doctor` como líneas `legado (era pre-Nix):` y **nunca** remueve
+(la limpieza final por máquina es P6, con consentimiento explícito):
 
-## Qué hace `uninstall` (y qué NO toca)
+- binario `chezmoi` en PATH y `~/.local/share/chezmoi` — home-manager
+  gestiona los dotfiles ahora (S6d);
+- binarios en `~/.local/bin` (hx, lazygit, delta, yazi, ya, eza, zoxide,
+  starship, atuin, bat, marksman, herdr) — el perfil nix los provee
+  (S2); revisa el orden de PATH para no ensombrecer al flake;
+- `~/google-cloud-sdk` — gcloud quedó como dependencia por repo (S3).
 
-Remueve, según el receipt: paquetes apt/pkg/brew registrados, binarios,
-directorios (`~/.local/node`), toolchains (rustup self uninstall, go, uv),
-chezmoi (purge + estado + binario) y restaura el shell de login a bash si
-rig lo había cambiado. El receipt se borra al final.
-
-**Nunca toca datos tuyos**: `~/work`, las claves SSH de las
-organizaciones (`~/.ssh`), los `.env.local`, los repos y los datos de
-agentes quedan intactos. El binario `prim` tampoco se toca
-(`rm ~/.local/bin/prim` si lo querés fuera).
+Sobre esa base, `prim install rig` ya no reinstala nada de lo viejo:
+activa el flake y listo; el receipt pasa a ser de prim.

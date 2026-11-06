@@ -19,11 +19,16 @@
 //! Each selected component's install.sh is fetched from raw.githubusercontent
 //! and piped to `sh`. Components installed in order: rig (environment) first,
 //! then harness (agent), then core — so the agent lands on a ready environment.
+//!
+//! `prim doctor [--prune]` (P5) is read-only diagnostics of the Nix stack:
+//! nix, rig receipt, flake reachability, store size, direnv GC roots and
+//! pre-Nix leftovers (advisory only); `--prune` adds nix-collect-garbage.
 
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
 mod bootstrap;
+mod doctor;
 mod lifecycle;
 mod nix;
 mod org;
@@ -102,6 +107,19 @@ fn main() {
             }
             lifecycle::status();
         }
+        // `prim doctor [--prune]` — read-only diagnostics; --prune adds
+        // nix-collect-garbage (P5). Not a component: handled like org.
+        Some("doctor") => match doctor::parse_args(&args[1..]) {
+            Some(prune) => {
+                if !doctor::run(prune) {
+                    std::process::exit(1);
+                }
+            }
+            None => {
+                eprintln!("uso: prim doctor [--prune]");
+                std::process::exit(2);
+            }
+        },
         _ => install_components(&args),
     }
 }
