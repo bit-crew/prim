@@ -37,6 +37,11 @@ in
         bufferline = "multiple";
         color-modes = true;
         auto-save = true;
+        # Clipboard over SSH (OSC 52): y/p/R use the system-clipboard register
+        # and termcode carries copies through the terminal to the client's
+        # clipboard (helix >= 25.05/25.07; both keys are post-migration).
+        default-yank-register = "+";
+        clipboard-provider = "termcode";
         # Dotfiles visible everywhere: file picker (space+f) and the file
         # explorer (space+e — the option exists from helix 25.07, which the
         # nixpkgs helix provides; harmless on older versions).
