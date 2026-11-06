@@ -1,0 +1,4 @@
+# prim — repo environment activation (S3): direnv + nix-direnv load the
+# flake automatically on cd; leaving the dir unloads it. The ORG's .envrc
+# (~/.envrc/.env.local one level up) composes with this file.
+use flake

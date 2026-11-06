@@ -67,5 +67,7 @@ en otra carpeta).
 
 ## Qué sigue siendo manual
 
-Identidad git por carpeta (`includeIf` + `.gitconfig` por org), alias de host
-SSH y perfiles AWS/GCP por cliente: ver [multi-cuenta.md](./multi-cuenta.md).
+Identidad git por carpeta: **automatizada** (`prim org` escribe el includeIf,
+ver arriba). Alias de host SSH y perfiles AWS/GCP por cliente: ver
+[multi-cuenta.md](./multi-cuenta.md). Dependencias por repo: ver
+[entornos-repo.md](./entornos-repo.md).
