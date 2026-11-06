@@ -246,6 +246,7 @@ cmd_uninstall() {
         exit 1
     fi
     # S4 notice FIRST: uninstall never touches ~/work.
+    # shellcheck disable=SC2088 # literal ~/work in a user-facing message
     log "~/work NO se toca: tus archivos y permisos quedan como estan (S4)."
     require_sudo
     sudo systemctl disable --now smbd >/dev/null 2>&1 || true
