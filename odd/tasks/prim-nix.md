@@ -24,7 +24,7 @@ Prerequisite merged: prim-lifecycle (8c75600).
 | P2: global flake — rig/nix/flake.nix + home-manager modules porting every rig/home template (zshrc+PRIM_LANDING+herdr, gitconfig, helix, lazygit+delta, atuin, herdr); profiles dc1/vps as flake args | S2,S3,S6d | TBD | |
 | P3: rig rebuilt — verbs install/update/uninstall over Nix (nix profile / home-manager switch / uninstall); receipts shrink; apt minimal list; retire old binary installers | S5,S2 | TBD | |
 | P4: repos per-org — .envrc `use flake` scaffolding guidance; org identity untouched (prim org) | S3,S6e | inline, templates + guide |
-| P5: retirement + GC — remove binaries.rs installers, chezmoi, old paths on machines; `prim doctor`/prune wrappers over nix-collect-garbage | S1,S5 | TBD | |
+| P5: retirement + GC — remove binaries.rs installers, chezmoi, old paths on machines; `prim doctor`/prune wrappers over nix-collect-garbage | S1,S5 | inline+writer, c938ec9 | |
 | P6: migrate THIS VPS — install Nix (needs explicit user OK), switch to flake, migrate gt/knt/prim orgs, retire old ~/.local stack, GC | S1,S6 | TBD | |
 
 ## Log
