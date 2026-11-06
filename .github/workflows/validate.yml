@@ -16,8 +16,9 @@ jobs:
       - name: Lint install scripts
         run: |
           # rig/install.sh is a thin P5 compat stub that pipes into the repo
-          # root install.sh; it must stay shellcheck-clean like the rest.
-          shellcheck install.sh rig/install.sh harness/install.sh
+          # root install.sh; files/install.sh is the optional Samba-over-
+          # Tailscale component (S9-S11). All must stay shellcheck-clean.
+          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh
 
   chezmoi-templates:
     runs-on: ubuntu-latest

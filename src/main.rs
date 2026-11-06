@@ -19,6 +19,8 @@
 //! Each selected component's install.sh is fetched from raw.githubusercontent
 //! and piped to `sh`. Components installed in order: rig (environment) first,
 //! then harness (agent), then core — so the agent lands on a ready environment.
+//! Optional components (S11b, e.g. files) never ride along 'all' installs:
+//! they opt in per machine via explicit key or menu number.
 //!
 //! `prim doctor [--prune]` (P5) is read-only diagnostics of the Nix stack:
 //! nix, rig receipt, flake reachability, store size, direnv GC roots and
@@ -44,15 +46,19 @@ struct Component {
     description: &'static str,
     /// Path to the component's install.sh inside the repo. None = not shippable yet.
     install_path: Option<&'static str>,
+    /// False = optional (S11b): excluded from 'all'/'todo' selections; only
+    /// an explicit key or menu number installs it.
+    in_all: bool,
 }
 
-/// Order here is also the install order (rig → harness → core).
+/// Order here is also the install order (rig → harness → core → files).
 const COMPONENTS: &[Component] = &[
     Component {
         key: "rig",
         name: "Rig (dev environment)",
         description: "toolchains, Node, herdr, editor, dotfiles, VPS infra. No agent.",
         install_path: Some("rig/install.sh"),
+        in_all: true,
     },
     Component {
         key: "harness",
@@ -60,12 +66,21 @@ const COMPONENTS: &[Component] = &[
         description:
             "agent runtime (ADK/Pi/gentle-ai) + skills. Use --skills-only for skills alone.",
         install_path: Some("harness/install.sh"),
+        in_all: true,
     },
     Component {
         key: "core",
         name: "Core (operating core)",
         description: "data, services, identity in your own accounts (not shippable yet).",
         install_path: None,
+        in_all: true,
+    },
+    Component {
+        key: "files",
+        name: "Files (SMB over Tailscale)",
+        description: "native iPhone/Android/Windows/Linux access to ~/work over SMB, only inside the tailnet. Optional.",
+        install_path: Some("files/install.sh"),
+        in_all: false,
     },
 ];
 
@@ -201,6 +216,8 @@ fn interactive_select() -> Vec<&'static str> {
     for (i, c) in COMPONENTS.iter().enumerate() {
         let tag = if c.install_path.is_none() {
             " (proximamente)"
+        } else if !c.in_all {
+            " (opcional)"
         } else {
             ""
         };
@@ -231,14 +248,15 @@ fn ask_skills_only() -> bool {
     )
 }
 
-/// Map a raw selection string to keys from `list`. 'a'/'all'/'todo' = the
-/// whole list; otherwise 1-based indices (positions in `list`) or component
-/// keys by name. Used for both the install menu (all components) and the
-/// uninstall picker (installed components only).
+/// Map a raw selection string to keys from `list`. 'a'/'all'/'todo' = every
+/// in_all component (optional ones like files are skipped, S11b); otherwise
+/// 1-based indices (positions in `list`) or component keys by name. Used for
+/// both the install menu (all components) and the uninstall picker
+/// (installed components only).
 fn select_from(list: &[Component], input: &str) -> Vec<&'static str> {
     let lower = input.to_lowercase();
     if matches!(lower.as_str(), "a" | "all" | "todo") {
-        return list.iter().map(|c| c.key).collect();
+        return list.iter().filter(|c| c.in_all).map(|c| c.key).collect();
     }
     let mut out = Vec::new();
     for tok in lower.split([' ', ',']).filter(|s| !s.is_empty()) {
@@ -341,6 +359,23 @@ mod tests {
         assert_eq!(select_from(COMPONENTS, "2 2"), vec!["harness"]);
         assert!(select_from(COMPONENTS, "zzz").is_empty());
         assert!(select_from(COMPONENTS, "9").is_empty());
+    }
+
+    /// Optional components (files, S11b): 'all'/'todo' skip them — a
+    /// default install never grows the Samba share — while the bare key
+    /// and the menu index still select them explicitly.
+    #[test]
+    fn select_from_all_excludes_optional_components() {
+        assert_eq!(
+            select_from(COMPONENTS, "all"),
+            vec!["rig", "harness", "core"]
+        );
+        assert_eq!(
+            select_from(COMPONENTS, "todo"),
+            vec!["rig", "harness", "core"]
+        );
+        assert_eq!(select_from(COMPONENTS, "files"), vec!["files"]);
+        assert_eq!(select_from(COMPONENTS, "4"), vec!["files"]);
     }
 
     /// --profile is accepted and stripped anywhere in install args, in both

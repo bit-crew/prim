@@ -8,6 +8,8 @@
 //! ~/.local/bin binaries now owned by the Nix profile, google-cloud-sdk).
 //! Leftovers are advisory only: doctor never removes anything — nix GC owns
 //! removal (S5) and the final per-machine cleanup is P6 with consent.
+//! When the files component's receipt exists, a `files` section (S11h)
+//! reports the SMB-over-Tailscale share, also best-effort and read-only.
 //!
 //! `prim doctor --prune` additionally runs `nix-collect-garbage
 //! --delete-older-than 30d`: it prints the exact command first and the
@@ -57,6 +59,7 @@ pub fn run(prune: bool) -> bool {
     store_report();
     direnv_report(&home);
     leftovers_report(&home);
+    files_report(receipts_dir().as_deref());
     if prune {
         return prune_run();
     }
@@ -75,6 +78,93 @@ pub(crate) fn parse_args(args: &[String]) -> Option<bool> {
 }
 
 // --- sections ----------------------------------------------------------------
+
+/// Files component section (S11h): shown only when the files receipt
+/// exists — best-effort probes of the SMB-over-Tailscale share (smbd,
+/// nmbd, tailscaled, tailnet IP, share path, user/group match). Every
+/// probe degrades to a tolerant note; the section is never fatal.
+fn files_report(receipts: Option<&Path>) {
+    let Some(text) = receipts.and_then(files_receipt_text) else {
+        return;
+    };
+    let share = json_field(&text, "share_path").unwrap_or_else(|| "-".into());
+    let user = json_field(&text, "share_user").unwrap_or_else(|| "-".into());
+    println!("[prim]   files: share={share} usuario={user} (SMB solo en el tailnet).");
+    println!("[prim]   files: smbd={}", svc_state("smbd"));
+    println!(
+        "[prim]   files: nmbd={} (enmascarado es lo esperado, S10)",
+        svc_state("nmbd")
+    );
+    println!("[prim]   files: tailscaled={}", svc_state("tailscaled"));
+    println!("[prim]   files: ip de tailscale={}", ts_ip());
+    if Path::new(&share).is_dir() {
+        println!("[prim]   files: {share} existe.");
+    } else {
+        println!("[prim]   files: {share} no existe — revisa la ruta del receipt.");
+    }
+    if let Some(line) = files_user_group_advisory(&user) {
+        println!("[prim]   files (aviso): {line}");
+    }
+}
+
+/// Contents of ~/.local/share/prim/files.receipt.json; None = the files
+/// component is not installed here (the section is gated on this).
+fn files_receipt_text(receipts: &Path) -> Option<String> {
+    fs::read_to_string(receipts.join("files.receipt.json")).ok()
+}
+
+/// `systemctl is-active <unit>` state as printed ("active", "masked",
+/// ...); "-" when systemctl is missing or silent.
+fn svc_state(unit: &str) -> String {
+    match Command::new("systemctl").args(["is-active", unit]).output() {
+        Ok(o) if !o.stdout.is_empty() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => "-".into(),
+    }
+}
+
+/// Tailscale IPv4, best-effort: plain CLI first, then `sudo -n` (the
+/// daemon socket is root-only on default installs); never prompts.
+fn ts_ip() -> String {
+    let attempts: [&[&str]; 2] = [
+        &["tailscale", "ip", "-4"],
+        &["sudo", "-n", "tailscale", "ip", "-4"],
+    ];
+    for args in attempts {
+        let mut cmd = Command::new(args[0]);
+        cmd.args(&args[1..]);
+        if let Ok(o) = cmd.output() {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if o.status.success() && !s.is_empty() {
+                return s;
+            }
+        }
+    }
+    "-".into()
+}
+
+/// One advisory line when the receipt's share user or the `primfiles`
+/// group no longer exists on the system (removed by hand): the share
+/// cannot authenticate until `prim install files` re-runs.
+fn files_user_group_advisory(user: &str) -> Option<String> {
+    let user_ok = quiet_ok(Command::new("id").arg(user));
+    let group_ok = quiet_ok(Command::new("getent").args(["group", "primfiles"]));
+    if user_ok && group_ok {
+        None
+    } else {
+        Some(format!(
+            "usuario {user} o grupo primfiles ya no existen — 'prim install files' lo repara."
+        ))
+    }
+}
+
+/// True when the command exits 0 with all output discarded.
+fn quiet_ok(cmd: &mut Command) -> bool {
+    cmd.stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
 
 /// nix section: version plus experimental features (nix-command and flakes
 /// are required by the home-manager flow).
@@ -330,6 +420,25 @@ mod tests {
             let args: Vec<String> = row.args.iter().map(|s| s.to_string()).collect();
             assert_eq!(parse_args(&args), row.expect, "{}", row.name);
         }
+    }
+
+    /// Files section gating (S11h): the doctor section runs only when
+    /// the files receipt exists; without it there is no section at all.
+    #[test]
+    fn files_section_gated_on_receipt() {
+        let dir = std::env::temp_dir().join("prim-doctor-files-gate-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(files_receipt_text(&dir), None, "sin receipt no hay seccion");
+        fs::write(
+            dir.join("files.receipt.json"),
+            "{\n\"component\": \"files\",\n\"share_user\": \"filesmb\"\n}\n",
+        )
+        .unwrap();
+        let text = files_receipt_text(&dir).unwrap();
+        assert_eq!(json_field(&text, "component").as_deref(), Some("files"));
+        assert_eq!(json_field(&text, "share_user").as_deref(), Some("filesmb"));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Leftovers detection over a planted fake HOME: chezmoi state dir,
