@@ -2,10 +2,11 @@
 //!
 //! prim owns its binary: the root install.sh copies it to ~/.local/bin/prim
 //! and `prim update` self-updates it from the repo's `latest` release before
-//! forwarding the verb to every component installed on the machine. A
-//! component counts as installed when a receipt exists
-//! (~/.local/share/prim/<key>.receipt.json, written by the component's own
-//! installer) or, for machines set up before receipts, a legacy marker
+//! updating components. Since P3 rig updates/uninstalls over Nix
+//! (nix::activate/deactivate, prim-owned receipt); harness keeps its
+//! install.sh forwarding. A component counts as installed when a receipt
+//! exists (~/.local/share/prim/<key>.receipt.json — for rig, written by prim
+//! itself) or, for machines set up before receipts, a legacy marker
 //! (~/.local/share/chezmoi for rig, ~/.agents/skills for harness).
 //!
 //! Uninstall is receipt-driven by design: without a receipt prim cannot know
@@ -24,7 +25,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::{run_component, select_from, Component, COMPONENTS};
+use crate::{nix, run_component, select_from, Component, COMPONENTS};
 
 /// Base URL of the prim "latest" release assets (self-update source).
 const RELEASE_BASE: &str = "https://github.com/bit-crew/prim/releases/download/latest";
@@ -66,8 +67,10 @@ pub fn installed_components() -> Vec<Component> {
 
 // --- update ------------------------------------------------------------------
 
-/// `prim update`: self-update prim, then forward "update" to every installed
-/// component. Actions touch only components present on the machine.
+/// `prim update`: self-update prim, then update every installed component
+/// (rig: re-activate over Nix — the github ref re-evaluates to latest main,
+/// lock pinning lives in the repo per S4; others: forward "update").
+/// Actions touch only components present on the machine.
 pub fn update() {
     self_update();
     let installed = installed_components();
@@ -77,6 +80,15 @@ pub fn update() {
     }
     let mut failures = 0;
     for comp in &installed {
+        if comp.key == "rig" {
+            println!("[prim] actualizando rig (nix)...");
+            let profile = nix::resolve_profile(None);
+            if !nix::activate(&profile) || nix::write_receipt(&profile).is_err() {
+                eprintln!("[prim] fallo actualizando rig (continuo).");
+                failures += 1;
+            }
+            continue;
+        }
         let Some(path) = comp.install_path else {
             eprintln!("[prim] {} aun no es instalable; se omite.", comp.key);
             failures += 1;
@@ -227,14 +239,6 @@ pub fn uninstall(args: &[String]) {
 
     let mut failures = 0;
     for comp in COMPONENTS.iter().filter(|c| keys.contains(&c.key)) {
-        let Some(path) = comp.install_path else {
-            eprintln!(
-                "[prim] {} aun no es instalable; nada que desinstalar.",
-                comp.key
-            );
-            failures += 1;
-            continue;
-        };
         if !has_receipt(comp.key) {
             eprintln!(
                 "[prim] {}: sin receipt no se desinstala — corre 'prim update' una vez para generar el receipt.",
@@ -243,6 +247,29 @@ pub fn uninstall(args: &[String]) {
             failures += 1;
             continue;
         }
+        // rig: over Nix (P3) — home-manager uninstall, then drop the receipt
+        // prim itself wrote. Never forwarded to install.sh.
+        if comp.key == "rig" {
+            println!("[prim] desinstalando rig (nix)...");
+            if !nix::deactivate() {
+                eprintln!("[prim] fallo desinstalando rig (continuo).");
+                failures += 1;
+                continue;
+            }
+            if let Some(dir) = receipts_dir() {
+                let _ = fs::remove_file(dir.join("rig.receipt.json"));
+            }
+            println!("[prim] receipt de rig eliminado.");
+            continue;
+        }
+        let Some(path) = comp.install_path else {
+            eprintln!(
+                "[prim] {} aun no es instalable; nada que desinstalar.",
+                comp.key
+            );
+            failures += 1;
+            continue;
+        };
         println!("[prim] desinstalando {}...", comp.key);
         if !run_component(path, &["uninstall"]) {
             eprintln!("[prim] fallo desinstalando {} (continuo).", comp.key);
@@ -339,7 +366,7 @@ pub fn status() {
 
 /// Extract a string field from JSON text by scanning for `"field"` and the
 /// first quoted value after the colon. Receipts are tiny; no parser needed.
-fn json_field(text: &str, field: &str) -> Option<String> {
+pub(crate) fn json_field(text: &str, field: &str) -> Option<String> {
     let key = format!("\"{field}\"");
     let rest = &text[text.find(&key)? + key.len()..];
     let after_colon = &rest[rest.find(':')? + 1..];

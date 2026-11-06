@@ -1,14 +1,15 @@
 //! prim — the umbrella orchestrator.
 //!
 //! A thin console selector turned lifecycle manager: `prim` picks which
-//! components of the ecosystem to act on and downloads and runs each
-//! component's own `install.sh` from the monorepo, forwarding the verb
-//! (`install|update|uninstall`, default install). It does NOT bundle their
-//! logic — each component keeps its own lightweight installer, invoked on
-//! demand. This honors the install matrix: harness alone / rig+harness /
-//! core+harness / all. prim also self-owns its binary (~/.local/bin/prim):
-//! the root install.sh puts it there and `prim update` self-updates it from
-//! the repo's "latest" release before updating components.
+//! components of the ecosystem to act on and invokes each component's own
+//! installer, forwarding the verb (`install|update|uninstall`, default
+//! install). Since P3 the split is: rig is activated over Nix directly
+//! (src/nix.rs: home-manager against the global flake, prim-owned receipt),
+//! while harness keeps its install.sh path. This honors the install
+//! matrix: harness alone / rig+harness / core+harness / all. prim also
+//! self-owns its binary (~/.local/bin/prim): the root install.sh puts it
+//! there and `prim update` self-updates it from the repo's "latest"
+//! release before updating components.
 //!
 //! S8 self-sufficiency: before installing rig (explicit `prim install`,
 //! bare keys or the interactive selector), prim bootstraps the machine
@@ -24,6 +25,7 @@ use std::process::{Command, Stdio};
 
 mod bootstrap;
 mod lifecycle;
+mod nix;
 mod org;
 
 /// Base raw URL of the monorepo's main branch.
@@ -104,9 +106,12 @@ fn main() {
     }
 }
 
-/// Install flow (also the back-compat bare-keys path): resolve the selection,
-/// ask the harness mode once, run each selected component's installer.
+/// Install flow (also the back-compat bare-keys path): resolve the selection
+/// (accepting `--profile <p>` / `--profile=<p>` anywhere for rig), ask the
+/// harness mode once, then run each selected component — rig over Nix, the
+/// rest through their own install.sh.
 fn install_components(args: &[String]) {
+    let (args, profile_arg) = strip_profile_arg(args);
     let chosen = if args.is_empty() {
         interactive_select()
     } else {
@@ -136,6 +141,17 @@ fn install_components(args: &[String]) {
 
     let mut failures = 0;
     for comp in COMPONENTS.iter().filter(|c| chosen.contains(&c.key)) {
+        // rig: prim speaks Nix directly (P3) — activate the flake and write
+        // prim's own receipt; rig/install.sh is no longer invoked.
+        if comp.key == "rig" {
+            println!("[prim] instalando rig (nix)...");
+            let profile = nix::resolve_profile(profile_arg.as_deref());
+            if !nix::activate(&profile) || nix::write_receipt(&profile).is_err() {
+                eprintln!("[prim] fallo instalando rig (continuo).");
+                failures += 1;
+            }
+            continue;
+        }
         match comp.install_path {
             None => {
                 eprintln!("[prim] {} aun no es instalable; se omite.", comp.key);
@@ -225,6 +241,27 @@ fn push_unique(v: &mut Vec<&'static str>, key: &'static str) {
     }
 }
 
+/// Remove `--profile <p>` (also `--profile=<p>`) from install args and
+/// return the remaining args plus the profile value, if given.
+fn strip_profile_arg(args: &[String]) -> (Vec<String>, Option<String>) {
+    let mut rest = Vec::new();
+    let mut profile = None;
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            profile = Some(arg.clone());
+            skip_next = false;
+        } else if arg == "--profile" {
+            skip_next = true;
+        } else if let Some(v) = arg.strip_prefix("--profile=") {
+            profile = Some(v.to_string());
+        } else {
+            rest.push(arg.clone());
+        }
+    }
+    (rest, profile)
+}
+
 /// Download a component's install.sh and run it with `sh`, passing `extra` args.
 /// The script is fetched via curl and piped to `sh -s -- <extra>`.
 fn run_component(install_path: &str, extra: &[&str]) -> bool {
@@ -286,5 +323,52 @@ mod tests {
         assert_eq!(select_from(COMPONENTS, "2 2"), vec!["harness"]);
         assert!(select_from(COMPONENTS, "zzz").is_empty());
         assert!(select_from(COMPONENTS, "9").is_empty());
+    }
+
+    /// --profile is accepted and stripped anywhere in install args, in both
+    /// `--profile <p>` and `--profile=<p>` forms; everything else passes
+    /// through untouched.
+    #[test]
+    fn strip_profile_arg_matrix() {
+        fn s(v: &[&str]) -> Vec<String> {
+            v.iter().map(|x| x.to_string()).collect()
+        }
+        let cases: Vec<(&str, Vec<&str>, Vec<&str>, Option<&str>)> = vec![
+            (
+                "split form after key",
+                vec!["rig", "--profile", "dc1"],
+                vec!["rig"],
+                Some("dc1"),
+            ),
+            (
+                "split form before keys",
+                vec!["--profile", "vps", "rig", "harness"],
+                vec!["rig", "harness"],
+                Some("vps"),
+            ),
+            (
+                "equals form",
+                vec!["--profile=dc1", "rig"],
+                vec!["rig"],
+                Some("dc1"),
+            ),
+            (
+                "no profile at all",
+                vec!["rig", "harness"],
+                vec!["rig", "harness"],
+                None,
+            ),
+            (
+                "dangling flag keeps rest",
+                vec!["rig", "--profile"],
+                vec!["rig"],
+                None,
+            ),
+        ];
+        for (name, input, rest, profile) in cases {
+            let (got_rest, got_profile) = strip_profile_arg(&s(&input));
+            assert_eq!(got_rest, s(&rest), "{name}");
+            assert_eq!(got_profile.as_deref(), profile, "{name}");
+        }
     }
 }

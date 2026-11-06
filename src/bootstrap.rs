@@ -23,8 +23,8 @@ const SKIP_APT_ENV: &str = "RIG_SKIP_APT";
 const NIX_INSTALL_URL: &str = "https://nixos.org/nix/install";
 
 /// Placeholder identity values when there is no TTY to ask (S6d).
-const PLACEHOLDER_NAME: &str = "devlab";
-const PLACEHOLDER_EMAIL: &str = "devlab@localhost";
+pub(crate) const PLACEHOLDER_NAME: &str = "devlab";
+pub(crate) const PLACEHOLDER_EMAIL: &str = "devlab@localhost";
 
 /// Collects per-step outcomes ("ejecutado"/"omitido") for the summary.
 #[derive(Default)]
@@ -230,7 +230,7 @@ fn identity_step(
 }
 
 /// ~/.config/prim/identity.toml for a given home.
-fn identity_path(home: &Path) -> PathBuf {
+pub(crate) fn identity_path(home: &Path) -> PathBuf {
     home.join(".config/prim/identity.toml")
 }
 
