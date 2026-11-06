@@ -37,6 +37,11 @@ in
         bufferline = "multiple";
         color-modes = true;
         auto-save = true;
+        # Dotfiles visible everywhere: file picker (space+f) and the file
+        # explorer (space+e — the option exists from helix 25.07, which the
+        # nixpkgs helix provides; harmless on older versions).
+        "file-picker".hidden = false;
+        "file-explorer".hidden = false;
         cursor-shape = {
           insert = "bar";
           normal = "block";
