@@ -17,8 +17,9 @@ jobs:
         run: |
           # rig/install.sh is a thin P5 compat stub that pipes into the repo
           # root install.sh; files/install.sh is the optional Samba-over-
-          # Tailscale component (S9-S11). All must stay shellcheck-clean.
-          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh
+          # Tailscale component (S9-S11); files/sync-work.sh is its manual
+          # two-way copy companion. All must stay shellcheck-clean.
+          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh files/sync-work.sh
 
   chezmoi-templates:
     runs-on: ubuntu-latest

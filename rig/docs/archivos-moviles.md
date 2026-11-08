@@ -90,3 +90,114 @@ rapido. `files` es para acceso continuo a `~/work` desde cualquier app.
 - `nmbd` deshabilitado y enmascarado: no corre.
 - La activacion de smbd por socket se evaluo y se descarto por poco fiable
   (S10); queda documentada para reabrir si la situacion cambia.
+
+## Copiar en las dos direcciones sin conexion
+
+Sin daemon de sincronizacion y sin servicios en la nube: el share es la
+fuente de verdad y el cliente guarda una copia propia para los momentos sin
+conectividad. Son dos operaciones manuales que se corren **siempre en este
+orden**: `pull` (manda el VPS) antes que `push` (manda el cliente).
+
+Borrar un archivo se hace **una sola vez**: lo borras en el cliente y el
+`push` lo saca del VPS. Al reves, lo que borras en el VPS desaparece del
+cliente en el `pull` siguiente. Nada queda borrado dos veces.
+
+### Donde corre
+
+En una tablet Android con Termux (el iPhone no puede correr rclone, asi que
+alli sigue siendo copia archivo por archivo desde la app Archivos):
+
+```
+pkg install rclone
+termux-setup-storage
+```
+
+El remoto de rclone se crea una vez, apuntando al share por la IP del
+tailnet, con el usuario `filesmb` (la clave se pide en el momento y queda
+ofuscada en el config de rclone, nunca en el script):
+
+```
+rclone config
+#   n            nuevo remoto
+#   name         vps
+#   Storage      smb
+#   host         100.101.102.103
+#   user         filesmb
+#   pass         (la clave, en el momento)
+#   port         445
+```
+
+La copia local vive en `~/storage/documents/work`, o donde digas con
+`--dest` (o con `WORK_SYNC_DEST`).
+
+### El script
+
+Se baja del repo y se deja en el Termux del cliente:
+
+```
+curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/files/sync-work.sh \
+  -o ~/sync-work.sh && chmod +x ~/sync-work.sh
+```
+
+Trae del VPS y deja la copia local al dia:
+
+```
+~/sync-work.sh pull
+```
+
+Manda la copia local al VPS (despues de un `pull`):
+
+```
+~/sync-work.sh push
+```
+
+La primera vez, en seco, para ver que se va a mover:
+
+```
+~/sync-work.sh pull --dry-run
+```
+
+### Que hace y que no hace
+
+| Que | Como |
+|-----|------|
+| Orden | siempre `pull` antes que `push` |
+| Por defecto | gana el archivo mas nuevo de los dos lados (`--update`) |
+| Con `--force` | gana la direccion del comando (push: el cliente; pull: el VPS) |
+| Borrados | se propagan: los hacés una vez y se van de los dos lados |
+| Borrado recibido | el archivo queda en `.sync-deleted/<timestamp>/` del lado que lo recibe |
+| Archivo pisado | queda como `<archivo>.bak` al lado, en el lado que recibio la copia |
+| Archivo creado en el VPS mientras el cliente estaba offline | un `push` NUNCA lo borra; el `pull` siguiente lo baja |
+| `.git`, `target`, `node_modules`, `.venv`, `dist`, `.next` | se excluyen siempre |
+| La copia local | NO es un clon de git: `.git` queda en el VPS y los commits se hacen alla |
+
+En este VPS el arbol completo pesa 915M, pero con las exclusiones lo que
+se copia son 157M.
+
+El script guarda `.sync-manifest` en la copia local: la lista de archivos
+que ambos lados tenian en la ultima operacion. Es lo que permite propagar
+los borrados con precision: solo se borra en el otro lado lo que vos borraste
+explicitamente, nunca nada mas.
+
+### Recuperar algo
+
+Si borraste de mas, el archivo no se perdio: quedo apartado.
+
+```
+# en el VPS (recibio un borrado hecho en el cliente)
+~/work/.sync-deleted/<timestamp>/ruta/del/archivo
+
+# en el cliente (recibio un borrado hecho en el VPS)
+~/storage/documents/work/.sync-deleted/<timestamp>/ruta/del/archivo
+```
+
+Copiá el archivo de vuelta a su ruta y segui. Lo mismo con un `<archivo>.bak`
+cuando lo que se piso fue una version.
+
+### Ojo
+
+- La comparacion es por tamano y fecha de modificacion, no por contenido.
+- No lo corras mientras estas editando en el otro lado: la copia no tiene
+  merge, el merge lo hace git en el VPS.
+- El share tiene que estar activo (`prim install files`) y Tailscale
+  arriba en el cliente.
