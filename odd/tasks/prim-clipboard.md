@@ -21,7 +21,7 @@ lo que lleva mas de 12 horas.
 
 | ID | Specs | Route | Commit |
 |----|-------|-------|--------|
-| C1: inbox efimero + timer de limpieza (2x/dia, TTL 12h) como archivos crudos en `rig/systemd/`, instalables a mano en la VPS hoy | S5,S7,S8 | parent | |
+| C1: inbox efimero + timer de limpieza (2x/dia, TTL 12h) como archivos crudos en `rig/systemd/`, instalables a mano en la VPS hoy | S5,S7,S8 | parent | 61b7bfc |
 | C2: `rig/tools/img-grab` (POSIX sh, ramas termux/linux/windows, modo `--file`, sube al inbox, imprime la ruta, la copia al portapapeles local como texto) | S4,S6 | writer | |
 | C3: `rig/tools/img-grab.ps1` (Windows: `Get-Clipboard -Format Image` -> scp -> ruta en el portapapeles) | S6 | writer | |
 | C4: modulos Nix del rig: `img-grab` en la lista global de tools, importacion de las unidades systemd, bindings de Termux (extra keys) en el perfil `dc1` | S6,S8,S9 | writer | |
@@ -37,3 +37,4 @@ lo que lleva mas de 12 horas.
 - L5 (2026-11-07, user): "Prefiero qeu solo se ejcute unas 2 veces al ´dia y que solo borre lo que lleva más de 12 horas allí" + "1. a y b" (el tool y los bindings, juntos).
 - L6 (2026-11-07, parent): el peor caso de retencion es ~24h (una imagen que cae justo despues de una pasada espera la siguiente). Decision del usuario, anotada para que no surprise.
 - L7 (2026-11-07, parent): C1 entregado en vivo (antes de P6): `rig/tools/prim-inbox-cleanup` instalado en `~/.local/bin/`, las unidades crudas en `~/.config/systemd/user/`, timer habilitado y con primer disparo `Result=success` (prxima corrida 03:20 UTC). El prune borra solo lo de mas de 12h, quita el puntero `last` si queda dangling y no toca `~/work`. Sandbox verificado: dry-run lista solo lo viejo, prune real borra solo eso, `last` sobrevive o se limpia.
+- L8 (2026-11-07, parent): delivery strategy — la branch `feat/files-sync` (feature `files`, commit ea0da49, 383 lineas) queda como PR propio; esta feature `prim-clipboard` vive en `feat/clipboard-inbox`, ENCADENADA sobre la anterior (PRs apilados: el de clipboard se rebasa encima cuando el de files mergue). Motivo: el harness marco que la branch unica ya habia pasado el corte de ~400 lineas al mezclar dos features. Cada commit de esta feature se mantiene por debajo de ese corte: C1 (100 lineas) ya esta; C2+C3+C5 (tool + doc) y C4 (modulos Nix) van en commits separados.
