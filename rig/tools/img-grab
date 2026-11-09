@@ -1,0 +1,211 @@
+#!/bin/sh
+# img-grab - push the image in the local clipboard to the VPS inbox.
+#
+# The clipboard lives on the client and the agent lives on the VPS, so an
+# image has to travel as a FILE and its PATH travels as TEXT (pasting text
+# over SSH works natively; OSC 52 is only needed in the reverse direction).
+#
+# The script grabs the image, uploads it to the ephemeral inbox on the VPS
+# (~/.cache/prim/inbox, disposable, outside ~/work so a screenshot never
+# reaches a repo or the SMB share), moves the "last" pointer to it, prints
+# the remote path and copies that path into the local clipboard as text so
+# the next paste puts the path in the prompt.
+#
+# Usage:
+#   img-grab [--host NAME] [--inbox PATH] [--file PATH] [--dry-run]
+#
+#   --host NAME   SSH alias of the VPS (default: vps). The connection comes
+#                 from the user's ~/.ssh/config; no key is ever handled here.
+#   --inbox PATH  remote inbox directory (default: ~/.cache/prim/inbox)
+#   --file PATH   use this local image file instead of the clipboard
+#   --dry-run     print the plan and upload nothing
+#
+# The inbox is pruned by a systemd user timer that runs twice a day and
+# deletes only what is older than 12 hours.
+
+set -eu
+
+PROG=${0##*/}
+HOST=vps
+# The tilde is expanded by the REMOTE shell, not here: the inbox lives on the
+# VPS and the client's home is a different one.
+# shellcheck disable=SC2088
+INBOX="~/.cache/prim/inbox"
+SOURCE_FILE=""
+DRY_RUN=0
+
+# The remote path is the payload and goes to stdout alone; the chatter goes to
+# stderr, so `PATH=$(img-grab)` yields just the path.
+log() { printf '[%s] %s\n' "$PROG" "$1" >&2; }
+err() { printf '[%s] %s\n' "$PROG" "$1" >&2; }
+
+usage() {
+    cat <<EOF
+Usage: $PROG [options]
+
+Take the image in the local clipboard, push it to the VPS inbox, print the
+remote path and copy that path into the local clipboard as text.
+
+Options:
+  --host NAME   SSH alias of the VPS (default: vps)
+  --inbox PATH  remote inbox directory (default: $INBOX)
+  --file PATH   use this local image file instead of the clipboard
+  --dry-run     print the plan and upload nothing
+  -h, --help    this help
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --host)
+            shift
+            [ $# -gt 0 ] || { err "--host needs a value"; exit 1; }
+            HOST="$1"
+            ;;
+        --inbox)
+            shift
+            [ $# -gt 0 ] || { err "--inbox needs a value"; exit 1; }
+            INBOX="$1"
+            ;;
+        --file)
+            shift
+            [ $# -gt 0 ] || { err "--file needs a value"; exit 1; }
+            SOURCE_FILE="$1"
+            ;;
+        --dry-run) DRY_RUN=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *)
+            err "unknown argument: $1"
+            usage >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+for tool in ssh scp; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        err "$tool not found in PATH (needed to reach the VPS)"
+        exit 1
+    }
+done
+
+# Quote a path for the remote shell.
+sq() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# Keep only safe characters in the name we give the file.
+slug() {
+    printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40
+}
+
+copy_text() {
+    if command -v wl-copy >/dev/null 2>&1; then
+        printf '%s' "$1" | wl-copy
+        return 0
+    fi
+    if command -v xclip >/dev/null 2>&1; then
+        printf '%s' "$1" | xclip -selection clipboard
+        return 0
+    fi
+    if command -v pbcopy >/dev/null 2>&1; then
+        printf '%s' "$1" | pbcopy
+        return 0
+    fi
+    if command -v termux-clipboard-set >/dev/null 2>&1; then
+        termux-clipboard-set "$1"
+        return 0
+    fi
+    return 1
+}
+
+# Write the clipboard image to $1. Returns 1 when no source is available.
+grab_image() {
+    out="$1"
+    if [ -n "$SOURCE_FILE" ]; then
+        [ -f "$SOURCE_FILE" ] || { err "file not found: $SOURCE_FILE"; exit 1; }
+        cat "$SOURCE_FILE" > "$out"
+        return 0
+    fi
+    if command -v termux-clipboard-get >/dev/null 2>&1; then
+        termux-clipboard-get > "$out" && return 0
+    fi
+    if command -v wl-paste >/dev/null 2>&1; then
+        wl-paste --type image/png > "$out" && return 0
+    fi
+    if command -v xclip >/dev/null 2>&1; then
+        xclip -selection clipboard -t image/png > "$out" && return 0
+    fi
+    if command -v pngpaste >/dev/null 2>&1; then
+        pngpaste "$out" && return 0
+    fi
+    return 1
+}
+
+TMP=$(mktemp -t img-grab.XXXXXX.png)
+trap 'rm -f "$TMP"' EXIT INT TERM
+
+if ! grab_image "$TMP"; then
+    err "no image source found"
+    err "install one of: Termux:API (termux-clipboard-get), wl-paste, xclip, pngpaste"
+    err "or pass a file with --file"
+    exit 1
+fi
+
+[ -s "$TMP" ] || { err "the clipboard image is empty"; exit 1; }
+
+MAGIC=$(od -An -tx1 -N4 "$TMP" 2>/dev/null | tr -d ' \n')
+if [ "$MAGIC" != "89504e47" ]; then
+    err "the clipboard does not hold a PNG (magic=$MAGIC)"
+    exit 1
+fi
+
+if [ -n "$SOURCE_FILE" ]; then
+    BASE=$(basename "$SOURCE_FILE")
+else
+    BASE=clipboard.png
+fi
+NAME="$(date -u +%Y%m%d-%H%M%S)-$(slug "${BASE%.*}").png"
+REMOTE_PATH="$INBOX/$NAME"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    log "dry run: would upload to $HOST:$REMOTE_PATH"
+    log "dry run: would point $HOST:$INBOX/last at $NAME"
+    exit 0
+fi
+
+# The inbox lives on the VPS, so a leading ~ belongs to the REMOTE home, not
+# to the local one: ask the VPS and expand it here, so the path we print is
+# absolute and the agent can read it.
+REMOTE_HOME=$(ssh "$HOST" 'printf %s "$HOME"') || {
+    err "could not read the remote home from $HOST"
+    exit 1
+}
+# shellcheck disable=SC2088
+case "$INBOX" in
+    "~") INBOX="$REMOTE_HOME" ;;
+    "~/"*) INBOX="$REMOTE_HOME/${INBOX#\~/}" ;;
+esac
+REMOTE_PATH="$INBOX/$NAME"
+NAME=$(basename "$REMOTE_PATH")
+
+CMD_MKDIR="mkdir -p $(sq "$INBOX")"
+CMD_LINK="ln -sfn $(sq "$NAME") $(sq "$INBOX/last")"
+
+# The remote paths are expanded here on purpose: they are local values,
+# already quoted for the remote shell by sq().
+# shellcheck disable=SC2029
+ssh "$HOST" "$CMD_MKDIR" || { err "could not create the inbox on $HOST"; exit 1; }
+scp "$TMP" "$HOST:$(sq "$REMOTE_PATH")" || { err "upload to $HOST failed"; exit 1; }
+# shellcheck disable=SC2029
+ssh "$HOST" "$CMD_LINK" || { err "could not move the last pointer on $HOST"; exit 1; }
+
+log "uploaded: $HOST:$REMOTE_PATH"
+printf '%s\n' "$REMOTE_PATH"
+
+if copy_text "$REMOTE_PATH"; then
+    log "the remote path is in your clipboard: paste it in the session"
+else
+    log "no clipboard tool found; copy the path above by hand"
+fi

@@ -22,10 +22,10 @@ lo que lleva mas de 12 horas.
 | ID | Specs | Route | Commit |
 |----|-------|-------|--------|
 | C1: inbox efimero + timer de limpieza (2x/dia, TTL 12h) como archivos crudos en `rig/systemd/`, instalables a mano en la VPS hoy | S5,S7,S8 | parent | 61b7bfc |
-| C2: `rig/tools/img-grab` (POSIX sh, ramas termux/linux/windows, modo `--file`, sube al inbox, imprime la ruta, la copia al portapapeles local como texto) | S4,S6 | writer | |
-| C3: `rig/tools/img-grab.ps1` (Windows: `Get-Clipboard -Format Image` -> scp -> ruta en el portapapeles) | S6 | writer | |
+| C2: `rig/tools/img-grab` (POSIX sh, ramas termux/linux/windows, modo `--file`, sube al inbox, imprime la ruta, la copia al portapapeles local como texto) | S4,S6 | parent (inline) | este commit |
+| C3: `rig/tools/img-grab.ps1` (Windows: `Get-Clipboard -Format Image` -> scp -> ruta en el portapapeles) | S6 | parent (inline) | este commit |
 | C4: modulos Nix del rig: `img-grab` en la lista global de tools, importacion de las unidades systemd, bindings de Termux (extra keys) en el perfil `dc1` | S6,S8,S9 | writer | |
-| C5: docs `rig/docs/imagenes.md`: el flujo por cliente, la convencion "leé la ultima imagen", la politica de limpieza | S1,S2,S3,S5 | writer | |
+| C5: docs `rig/docs/imagenes.md`: el flujo por cliente, la convencion "leé la ultima imagen", la politica de limpieza | S1,S2,S3,S5 | parent (inline) | este commit |
 | C6: verificacion del padre (shellcheck, sandbox funcional de subida y TTL, reporte honesto del gap de Nix) + commits por unidad | all | parent | |
 
 ## Log
@@ -38,3 +38,4 @@ lo que lleva mas de 12 horas.
 - L6 (2026-11-07, parent): el peor caso de retencion es ~24h (una imagen que cae justo despues de una pasada espera la siguiente). Decision del usuario, anotada para que no surprise.
 - L7 (2026-11-07, parent): C1 entregado en vivo (antes de P6): `rig/tools/prim-inbox-cleanup` instalado en `~/.local/bin/`, las unidades crudas en `~/.config/systemd/user/`, timer habilitado y con primer disparo `Result=success` (prxima corrida 03:20 UTC). El prune borra solo lo de mas de 12h, quita el puntero `last` si queda dangling y no toca `~/work`. Sandbox verificado: dry-run lista solo lo viejo, prune real borra solo eso, `last` sobrevive o se limpia.
 - L8 (2026-11-07, parent): delivery strategy — la branch `feat/files-sync` (feature `files`, commit ea0da49, 383 lineas) queda como PR propio; esta feature `prim-clipboard` vive en `feat/clipboard-inbox`, ENCADENADA sobre la anterior (PRs apilados: el de clipboard se rebasa encima cuando el de files mergue). Motivo: el harness marco que la branch unica ya habia pasado el corte de ~400 lineas al mezclar dos features. Cada commit de esta feature se mantiene por debajo de ese corte: C1 (100 lineas) ya esta; C2+C3+C5 (tool + doc) y C4 (modulos Nix) van en commits separados.
+- L9 (2026-11-07, parent): los tres intentos de delegar (writer A dos veces, writer B dos veces) murieron con `rate_limit` del proveedor; el rol no estuvo disponible y el trabajo se implemento INLINE con la spec ya escrita. Evidencia de C2: shellcheck limpio, `sh -n` ok, y un test funcional con el remoto emulado (ssh/scp reales en el sentido de que el archivo llega, el puntero `last` se mueve, el nombre lleva timestamp UTC y la limpieza se lleva la vieja): 9/9 asserts. El script imprime SOLO la ruta en stdout (los logs van a stderr) para que `PATH=$(img-grab)` devuelva la ruta pelada. Un end-to-end por SSH real no se pudo hacer desde el VPS: no hay clave general para auto-SSH (solo claves de git por servicio) y agregar una a `authorized_keys` es material de seguridad que no se toca sin el usuario.

@@ -20,7 +20,7 @@ jobs:
           # Tailscale component (S9-S11); files/sync-work.sh is its manual
           # two-way copy companion; rig/tools/* are the client-side helpers
           # (clipboard grab, inbox cleanup). All must stay shellcheck-clean.
-          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh files/sync-work.sh rig/tools/prim-inbox-cleanup
+          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh files/sync-work.sh rig/tools/prim-inbox-cleanup rig/tools/img-grab
 
   chezmoi-templates:
     runs-on: ubuntu-latest
