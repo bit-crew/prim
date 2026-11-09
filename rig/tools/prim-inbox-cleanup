@@ -1,0 +1,42 @@
+#!/bin/sh
+# prim-inbox-cleanup - prune the ephemeral image inbox.
+#
+# The inbox (~/.cache/prim/inbox) holds the images the client pushed from its
+# clipboard. They are disposable: this removes only what is older than
+# PRIM_INBOX_MAX_AGE_MIN (default 720 = 12 hours). The timer runs twice a
+# day, so the worst case retention is ~24h.
+#
+# Nothing here touches ~/work: the inbox lives in the XDG cache dir, on
+# purpose, so a screenshot never reaches a repo, a git index or the SMB
+# share.
+#
+# Usage: prim-inbox-cleanup [--dry-run]
+
+set -eu
+
+INBOX="${PRIM_INBOX:-$HOME/.cache/prim/inbox}"
+MAX_AGE_MIN="${PRIM_INBOX_MAX_AGE_MIN:-720}"
+DRY_RUN=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dry-run) DRY_RUN=1 ;;
+        *) printf 'usage: %s [--dry-run]\n' "${0##*/}" >&2; exit 1 ;;
+    esac
+    shift
+done
+
+[ -d "$INBOX" ] || exit 0
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    find "$INBOX" -type f -mmin "+$MAX_AGE_MIN" -print
+    exit 0
+fi
+
+find "$INBOX" -type f -mmin "+$MAX_AGE_MIN" -delete
+
+# `last` points at the newest image. If that image was just pruned, the
+# pointer dangles: drop it so nothing reads a broken path.
+if [ -L "$INBOX/last" ] && [ ! -e "$INBOX/last" ]; then
+    rm -f "$INBOX/last"
+fi

@@ -1,0 +1,6 @@
+[Unit]
+Description=Prune the ephemeral image inbox (files older than 12h)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/prim-inbox-cleanup
