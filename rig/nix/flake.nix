@@ -46,6 +46,8 @@
             ./modules/zsh.nix
             ./modules/git.nix
             ./modules/editor.nix
+            ./modules/systemd.nix
+            ./modules/termux.nix
           ];
         };
     in {
