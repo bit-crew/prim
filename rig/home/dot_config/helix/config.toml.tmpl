@@ -14,8 +14,13 @@ color-modes = true
 auto-save = true
 # Lineas muy largas: se parten al ancho de la ventana (flexible, como en
 # Windows): si agrandas o achicas la terminal, el corte se mueve solo.
-# En caliente: :toggle-option editor.soft-wrap
-soft-wrap = true
+# En helix 25.01+ soft-wrap es una TABLA, no un booleano: poner
+# "soft-wrap = true" hace que helix RECHACE la config entera.
+[editor.soft-wrap]
+enable = true
+max-wrap = 10              # columnas minimas antes del borde derecho
+max-indent-retain = 40     # cuanta indentacion preservar al envolver
+wrap-indicator = "\u21ba " # simbolo al inicio de la linea envuelta (deja "" para nada)
 
 [editor.cursor-shape]
 insert = "bar"
@@ -63,5 +68,7 @@ A-g = [
 [editor.file-picker]
 hidden = false
 
-[editor.file-explorer]
-hidden = false
+# [editor.file-explorer] requires helix >= 25.07; on 25.01 it makes the whole
+# config fail to load. Uncomment after upgrading.
+# [editor.file-explorer]
+# hidden = false

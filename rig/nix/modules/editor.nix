@@ -39,8 +39,15 @@ in
         auto-save = true;
         # Long lines wrap at the window edge, so they follow the terminal
         # size: widen or narrow the terminal and the wrap point moves.
-        # Toggle it at runtime with :toggle-option editor.soft-wrap
-        soft-wrap = true;
+        # In helix 25.01+ soft-wrap is a TABLE, not a boolean: writing
+        # "soft-wrap = true" makes helix reject the whole config and fall
+        # back to the defaults (no wrap at all).
+        soft-wrap = {
+          enable = true;
+          max-wrap = 10;
+          max-indent-retain = 40;
+          wrap-indicator = "\u21ba ";
+        };
         # Clipboard over SSH (OSC 52): y/p/R use the system-clipboard register
         # and termcode carries copies through the terminal to the client's
         # clipboard (helix >= 25.05/25.07; both keys are post-migration).
