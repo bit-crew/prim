@@ -19,8 +19,8 @@ coincide con el estado objetivo del script.
 
 | ID | Spec | Route | Commit |
 |----|------|-------|--------|
-| H1 | S1,S2,S3 | Parent inline: `rig/host/harden-vps.sh` idempotente (swap 2G + tabla nftables `vps_hardening` 22/8443 con auto-revert 120s) | h1 |
-| H2 | S1,S2 | Parent inline: aplicar en vivo, verificar SSH activo, confirmar y dejar persistente | h2 (sin commit) |
+| H1 | S1,S2,S3 | Parent inline: `rig/host/harden-vps.sh` idempotente (swap 2G + tabla nftables `vps_hardening` 22/8443 con auto-revert 120s) | c693d12 |
+| H2 | S1,S2 | Parent inline: aplicar en vivo, verificar SSH activo, confirmar y dejar persistente | aplicado 2026-11-10 (sin commit: estado host) |
 
 ## Log
 
@@ -29,3 +29,10 @@ coincide con el estado objetivo del script.
   /etc/sysctl.d/99-workspaces-swap.conf). El script lo detecta como estado
   objetivo y no lo recrea (nota: sysctl file distinto, mismo efecto).
 - L2 (2026-11-10): correccion de scoping S3; este feature queda en prim.
+- L3 (2026-11-10, aplicacion H2): nftables 1.1.3 via apt (unico paquete
+  nuevo); tabla `vps_hardening` aplicada, egress y sesion SSH verificados,
+  auto-revert cancelado con --confirm, persistente via /etc/nftables.conf
+  include + nftables.service enabled. sysctl renombrado a 99-swap.conf
+  (nombre canonico del script). Observacion del apt: kernel 6.12.116
+  pendiente de reinicio (preexistente, decision del usuario, no parte de
+  este feature).
