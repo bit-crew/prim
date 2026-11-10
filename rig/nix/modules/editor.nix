@@ -37,6 +37,13 @@ in
         bufferline = "multiple";
         color-modes = true;
         auto-save = true;
+        # Long lines wrap at 100 columns instead of the window edge, so they
+        # can be read whole without horizontal scrolling. 100 is the width
+        # rustfmt already uses, so the code of the repo does not wrap. Toggle
+        # it at runtime with :toggle-option editor.soft-wrap
+        soft-wrap = true;
+        wrap-at-text-width = true;
+        text-width = 100;
         # Clipboard over SSH (OSC 52): y/p/R use the system-clipboard register
         # and termcode carries copies through the terminal to the client's
         # clipboard (helix >= 25.05/25.07; both keys are post-migration).
