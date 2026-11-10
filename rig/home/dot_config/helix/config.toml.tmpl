@@ -68,7 +68,8 @@ A-g = [
 [editor.file-picker]
 hidden = false
 
-# [editor.file-explorer] requires helix >= 25.07; on 25.01 it makes the whole
-# config fail to load. Uncomment after upgrading.
-# [editor.file-explorer]
-# hidden = false
+# El explorador (space+e) pide helix >= 25.07. El rig instala siempre la
+# version mas reciente (nixos-unstable), asi que esto esta disponible; en una
+# helix vieja esta opcion hace que la config ENTERA no cargue.
+[editor.file-explorer]
+hidden = false

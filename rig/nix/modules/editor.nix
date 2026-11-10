@@ -54,8 +54,10 @@ in
         default-yank-register = "+";
         clipboard-provider = "termcode";
         # Dotfiles visible everywhere: file picker (space+f) and the file
-        # explorer (space+e — the option exists from helix 25.07, which the
-        # nixpkgs helix provides; harmless on older versions).
+        # explorer (space+e). The explorer option exists from helix 25.07 and
+        # the rig always installs the most recent one (nixos-unstable), so it
+        # is always available: on an older helix this option makes the whole
+        # config fail to load.
         "file-picker".hidden = false;
         "file-explorer".hidden = false;
         cursor-shape = {
