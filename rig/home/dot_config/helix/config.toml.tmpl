@@ -12,13 +12,10 @@ mouse = true
 bufferline = "multiple"
 color-modes = true
 auto-save = true
-# Lineas muy largas: se parten a 100 columnas (no al borde de la ventana), asi
-# se leen enteras sin scrollear en horizontal. 100 = el ancho que usa rustfmt,
-# o sea el que ya tiene el codigo del repo. En caliente: :toggle-option
-# editor.soft-wrap
+# Lineas muy largas: se parten al ancho de la ventana (flexible, como en
+# Windows): si agrandas o achicas la terminal, el corte se mueve solo.
+# En caliente: :toggle-option editor.soft-wrap
 soft-wrap = true
-wrap-at-text-width = true
-text-width = 100
 
 [editor.cursor-shape]
 insert = "bar"
