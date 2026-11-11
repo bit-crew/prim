@@ -8,7 +8,7 @@
 # helix, lazygit (editor.nix); starship, zoxide, direnv, nix-direnv (zsh.nix);
 # atuin (editor.nix); zsh is the shell binary itself, listed here because
 # programs.zsh only writes ~/.zshrc.
-{ pkgs, ... }:
+{ lib, pkgs, profile, ... }:
 
 {
   home.packages = with pkgs; [
@@ -40,5 +40,11 @@
     basedpyright
     yaml-language-server
     rust-analyzer
+  ] ++ lib.optionals (profile == "vps") [
+    # mosh-server: roaming shell for clients on the tailnet. Only the VPS
+    # serves mosh sessions; client installs are per device (see
+    # rig/docs/mosh.md). SSH stays the auth path; mosh adds UDP 60000-60010
+    # over tailscale0 only.
+    mosh
   ];
 }
