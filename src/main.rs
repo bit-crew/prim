@@ -46,8 +46,9 @@ struct Component {
     description: &'static str,
     /// Path to the component's install.sh inside the repo. None = not shippable yet.
     install_path: Option<&'static str>,
-    /// False = optional (S11b): excluded from 'all'/'todo' selections; only
-    /// an explicit key or menu number installs it.
+    /// False = excluded from 'all'/'todo' selections (files: the rig vps
+    /// flow chains it instead — S1/S2 of odd/tasks/rig-workstation-files.md;
+    /// an explicit key or menu number still installs/repairs it).
     in_all: bool,
 }
 
@@ -78,7 +79,7 @@ const COMPONENTS: &[Component] = &[
     Component {
         key: "files",
         name: "Files (SMB over Tailscale)",
-        description: "native iPhone/Android/Windows/Linux access to ~/work over SMB, only inside the tailnet. Optional.",
+        description: "workstation share of ~/work over SMB, tailnet-only. Installed with the rig (vps profile); explicit install repairs it.",
         install_path: Some("files/install.sh"),
         in_all: false,
     },
@@ -173,6 +174,7 @@ fn install_components(args: &[String]) {
     };
 
     let mut failures = 0;
+    let mut chained_files = false;
     for comp in COMPONENTS.iter().filter(|c| chosen.contains(&c.key)) {
         // rig: prim speaks Nix directly (P3) — activate the flake and write
         // prim's own receipt; rig/install.sh is no longer invoked.
@@ -182,7 +184,28 @@ fn install_components(args: &[String]) {
             if !nix::activate(&profile) || nix::write_receipt(&profile).is_err() {
                 eprintln!("[prim] fallo instalando rig (continuo).");
                 failures += 1;
+                continue;
             }
+            // Workstation share (S1/S2): the vps profile IS the workstation,
+            // so the rig install configures the ~/work SMB share right after
+            // the activation. Client profiles never serve SMB.
+            if profile == "vps" {
+                if nix::dry_run() {
+                    println!("[prim] PRIM_DRY_RUN=1: no se ejecuta files; encadenaria 'files/install.sh' (share de ~/work).");
+                } else {
+                    println!("[prim] instalando files (share ~/work del workstation)...");
+                    if !run_component("files/install.sh", &[]) {
+                        eprintln!("[prim] fallo instalando files (continuo).");
+                        failures += 1;
+                    } else {
+                        chained_files = true;
+                    }
+                }
+            }
+            continue;
+        }
+        // The rig chain already installed files; skip the explicit pass.
+        if comp.key == "files" && chained_files {
             continue;
         }
         match comp.install_path {
@@ -217,7 +240,7 @@ fn interactive_select() -> Vec<&'static str> {
         let tag = if c.install_path.is_none() {
             " (proximamente)"
         } else if !c.in_all {
-            " (opcional)"
+            " (con rig)"
         } else {
             ""
         };

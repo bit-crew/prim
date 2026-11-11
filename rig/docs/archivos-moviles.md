@@ -1,6 +1,6 @@
 # Archivos moviles — ~/work por SMB dentro del tailnet
 
-El componente opcional `files` comparte `~/work` por SMB (Samba) para que
+El componente `files` comparte `~/work` por SMB (Samba) para que
 iPhone (app Archivos), Android, Windows y Linux lo abran de forma nativa,
 como una carpeta mas. El servidor escucha **solo** en la interfaz
 `tailscale0`: sin Tailscale no hay acceso y no se abre ningun puerto a
@@ -9,11 +9,15 @@ Internet (S9-S11). Sin Nextcloud ni servicios de sincronizacion.
 ## Instalacion
 
 ```
-prim install files
+prim install rig        # perfil vps: activa el entorno y encadena files
+prim install files      # reinstalacion/reparacion explicita
 ```
 
-Es un componente opcional: `prim install` con "todo" NO lo instala; hay que
-pedirlo explicito (la clave `files` o su numero en el menu).
+Es parte del workstation: `prim install rig` con perfil `vps` lo configura
+automaticamente al final, vacio o lleno da igual (un VPS recien creado ya
+queda compartiendo para cuando lleguen los archivos). No entra en la
+seleccion "todo" del menu porque ya viaja con el rig; la clave `files`
+queda para reparar.
 
 Durante la instalacion:
 

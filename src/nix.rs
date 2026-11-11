@@ -90,7 +90,7 @@ fn toml_field(text: &str, key: &str, fallback: &str) -> String {
 }
 
 /// True when PRIM_DRY_RUN=1: print the exact plan instead of running nix.
-fn dry_run() -> bool {
+pub(crate) fn dry_run() -> bool {
     std::env::var_os("PRIM_DRY_RUN").is_some_and(|v| v == "1")
 }
 

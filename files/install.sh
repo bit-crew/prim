@@ -1,7 +1,13 @@
 #!/bin/sh
-# install.sh - optional `files` component (S9-S11): SMB share of ~/work for
+# install.sh - the `files` component (S9-S11): SMB share of ~/work for
 # iPhone (Files), Android, Windows and Linux — reachable ONLY inside the
 # tailnet, because smbd binds to tailscale0 and no port is exposed.
+#
+# Part of the workstation (odd/tasks/rig-workstation-files.md, S1/S2):
+# `prim install rig` with the vps profile chains this installer right after
+# the home-manager activation, so a fresh VPS ends with ~/work shared,
+# empty or full. Client profiles never run it; an explicit `prim install
+# files` reinstalls/repairs it.
 #
 # Verb contract (prim machinery): $1 = install|update|uninstall (default
 # install). Everything is idempotent; re-running any verb is safe.

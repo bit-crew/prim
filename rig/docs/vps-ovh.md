@@ -102,9 +102,10 @@ Luego, de forma idempotente:
 1. Instala `curl` en el VPS si falta (arranque en frío).
 2. Descarga el binario `devlab-install` desde la release `latest` y verifica su
    checksum.
-3. Ejecuta el binario con perfil `vps`: paquetes del sistema, chezmoi + dotfiles,
-   rustup/uv/cargo, binarios (helix, herdr, etc.), infra (AWS/Terraform/sops/GCP)
-   y el agente (Pi + gentle-ai).
+3. Ejecuta el binario con perfil `vps`: Nix + home-manager (dotfiles y
+   binarios: helix, herdr, mosh-server, etc.), rustup/uv/cargo, infra
+   (AWS/Terraform/sops/GCP), el agente (Pi + gentle-ai) y, al final, el
+   share SMB de `~/work` solo dentro del tailnet (componente files).
 
 El resultado es un VPS con el entorno devlab instalado. El acceso por clave SSH
 (para no volver a teclear la password) lo configura el **cliente** al enlazarse,

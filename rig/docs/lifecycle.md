@@ -30,6 +30,11 @@ prim doctor [--prune]                 # diagnóstico de solo lectura; --prune = 
    dotfiles preexistentes en conflicto se mueven a `*.prim-backup`, no se
    sobreescriben.
 3. prim escribe el receipt.
+4. Workstation (S1/S2 de `odd/tasks/rig-workstation-files.md`): con el
+   perfil `vps`, prim encadena `files/install.sh` — el share SMB de
+   `~/work`, solo por `tailscale0` (clave SMB por TTY; `tailscale up` si
+   falta sesion). Los perfiles cliente nunca levantan el share. Con
+   `PRIM_DRY_RUN=1` el encadenado se imprime y no se ejecuta.
 
 ### `prim update`
 
@@ -39,9 +44,15 @@ ejecución, así que "update" es re-activar. El pin fino de versiones vive
 en el `flake.lock` del repo (S4): se mueve con `nix flake update` en el
 repo, no en la máquina.
 
+El componente `files` (share de `~/work`) también se actualiza aquí cuando
+su receipt existe: prim le reenvía `update` (apt upgrade de samba,
+tailscale update, permisos y conf — sin prompts, TTY-free).
+
 ### `prim uninstall rig`
 
-`home-manager uninstall` y el receipt se borra. **No toca**: `/nix` (el
+`home-manager uninstall` y el receipt se borra. El componente `files` NO
+se desinstala junto al rig: `prim uninstall files` es explícito (y jamás
+toca `~/work`, S4 del script). **No toca**: `/nix` (el
 store lo limpia el GC de nix, S5), `~/work`, `~/.ssh`, los `.env.local`,
 ni el stack del agente (harness). El binario `prim` tampoco se toca
 (`rm ~/.local/bin/prim` si lo querés fuera).
