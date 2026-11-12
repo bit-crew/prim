@@ -57,7 +57,7 @@ const COMPONENTS: &[Component] = &[
     Component {
         key: "rig",
         name: "Rig (dev environment)",
-        description: "toolchains, Node, herdr, editor, dotfiles, VPS infra. No agent.",
+        description: "dev workstation: toolchains, herdr, editor, dotfiles, host infra + the ~/work SMB share (vps profile). No agent.",
         install_path: Some("install.sh"),
         in_all: true,
     },
@@ -236,11 +236,11 @@ fn install_components(args: &[String]) {
 /// Show the menu and read the user's selection from stdin.
 fn interactive_select() -> Vec<&'static str> {
     println!("prim — selector de instalacion\n");
-    for (i, c) in COMPONENTS.iter().enumerate() {
+    // Only the primary components are menu entries: files rides with the rig
+    // (vps profile) and stays reachable by explicit key for repair.
+    for (i, c) in COMPONENTS.iter().filter(|c| c.in_all).enumerate() {
         let tag = if c.install_path.is_none() {
             " (proximamente)"
-        } else if !c.in_all {
-            " (con rig)"
         } else {
             ""
         };

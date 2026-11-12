@@ -61,3 +61,8 @@ never touched). The files component remains directly addressable for repair.
   18/18 tests, sh -n, menu render. The live chain gets its real proof at P6.
   Branch note: feat/workstation-files carries feat/clipboard-inbox's unpushed
   commits (inherited at branch point); evaluate chained PRs when opening them.
+- L4 (2026-11-12, menu, verbatim): "Porqeu putas sigue separado Rig de files?"
+  — the selector still LISTED files as entry 4, which reads as separate.
+  Files leaves the menu entirely (it rides with rig, vps profile); it stays
+  addressable by explicit key (`prim install|uninstall files`) for repair.
+  The rig menu entry now names the share it installs.

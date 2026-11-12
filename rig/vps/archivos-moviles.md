@@ -15,9 +15,9 @@ prim install files      # reinstalacion/reparacion explicita
 
 Es parte del workstation: `prim install rig` con perfil `vps` lo configura
 automaticamente al final, vacio o lleno da igual (un VPS recien creado ya
-queda compartiendo para cuando lleguen los archivos). No entra en la
-seleccion "todo" del menu porque ya viaja con el rig; la clave `files`
-queda para reparar.
+queda compartiendo para cuando lleguen los archivos). No aparece en el
+menu del instalador: viaja con el rig. La clave `files` queda como
+comando explicito para reparar o desinstalar.
 
 Durante la instalacion:
 
