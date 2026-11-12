@@ -1,4 +1,5 @@
 __*/*
+.env*
 
 # Rust build artifacts
 /target/
