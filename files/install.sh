@@ -134,7 +134,13 @@ tailscale_login() {
 
 set_smb_password() {
     # TTY only: smbpasswd itself prompts twice; passwords never travel in
-    # args or env (S11).
+    # args or env (S11). On a re-run the existing password is KEPT: pdbedit
+    # listing the user means a password is already set, so the chained
+    # install (rig vps) never resets it and repairs stay TTY-free.
+    if sudo pdbedit -L -u "$SMB_USER" >/dev/null 2>&1; then
+        log "clave SMB de '$SMB_USER' ya definida; se conserva."
+        return 0
+    fi
     if [ -t 0 ]; then
         log "define la clave SMB para '$SMB_USER' (se pide dos veces)."
         sudo smbpasswd -a "$SMB_USER"
