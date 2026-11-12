@@ -43,7 +43,7 @@
   ] ++ lib.optionals (profile == "vps") [
     # mosh-server: roaming shell for clients on the tailnet. Only the VPS
     # serves mosh sessions; client installs are per device (see
-    # rig/docs/mosh.md). SSH stays the auth path; mosh adds UDP 60000-60010
+    # rig/vps/mosh.md). SSH stays the auth path; mosh adds UDP 60000-60010
     # over tailscale0 only.
     mosh
   ];

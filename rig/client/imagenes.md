@@ -22,7 +22,7 @@ que tiene mas de 12 horas**: el peor caso es ~24h.
 En el **cliente** (la maquina desde la que copias las imagenes):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/rig/tools/install-img-grab.sh | sh
+curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/rig/client/install-img-grab.sh | sh
 ```
 
 Instala `img-grab` en `~/.local/bin` y **cablea el binding solo**, segun el
@@ -30,14 +30,10 @@ terminal que detecte (Ghostty y kitty se editan en el sitio, con backup del
 config; para WezTerm e iTerm2 imprime el snippet porque son archivos Lua y
 no se tocan). Es idempotente: correrlo dos veces no duplica nada.
 
-En el **VPS** (donde corre el agente), la limpieza del inbox:
-
-```
-curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/rig/tools/install-inbox-cleanup.sh | sh
-```
-
-Instala el script, las dos unidades de systemd de usuario y habilita el
-timer. Tambien idempotente.
+En el **VPS** (donde corre el agente), la limpieza del inbox **viene con el
+rig**: el perfil `vps` del flake instala el script, las dos unidades de
+systemd de usuario y habilita el timer (`prim install rig`). No hace falta
+instalar nada a mano.
 
 Con el repo en una branch (antes del merge) hay que pasarle `RAW_BASE`:
 
@@ -125,7 +121,7 @@ El perfil `dc1` del rig escribe el `termux.properties` por vos (modulo
 ## iPhone
 
 El iPhone no corre rclone ni Termux: ahi la imagen entra por el **share de
-SMB** del componente `files` (ver `rig/docs/archivos-moviles.md`). Dejas
+SMB** del componente `files` (ver `rig/vps/archivos-moviles.md`). Dejas
 la foto en `~/work/`, pegas la ruta en moshi y el agente la lee.
 
 ## Ver que borraria la limpieza

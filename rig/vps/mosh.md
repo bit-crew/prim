@@ -33,7 +33,7 @@ conectar.
 
 ## Firewall: UDP 60000–60010 solo por Tailscale
 
-Regla nftables — **ya vive en `rig/host/harden-vps.sh`** (main), en la
+Regla nftables — **ya vive en `rig/vps/harden-vps.sh`** (main), en la
 cadena `input` de la tabla `vps_hardening`, antes del `drop` final:
 
 ```
@@ -48,7 +48,7 @@ Aplicación en el host: re-ejecutar el script tras actualizar el repo
 salvo con `--confirm`):
 
 ```
-sudo ./rig/host/harden-vps.sh --confirm
+sudo ./rig/vps/harden-vps.sh --confirm
 ```
 
 Verificar con `sudo nft list chain inet vps_hardening input`.

@@ -15,37 +15,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Lint install scripts
         run: |
-          # rig/install.sh is a thin P5 compat stub that pipes into the repo
-          # root install.sh; files/install.sh is the optional Samba-over-
-          # Tailscale component (S9-S11); files/sync-work.sh is its manual
-          # two-way copy companion; rig/tools/* are the client-side helpers
-          # (clipboard grab, inbox cleanup). All must stay shellcheck-clean.
-          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh files/sync-work.sh rig/tools/prim-inbox-cleanup rig/tools/img-grab rig/tools/install-img-grab.sh rig/tools/install-inbox-cleanup.sh
-
-  chezmoi-templates:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install chezmoi
-        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
-      - name: Render rig dotfile templates for both profiles
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          for profile in dc1 vps; do
-            echo "=== profile: $profile ==="
-            cfg="$(mktemp -d)/chezmoi.toml"
-            chezmoi init --source rig/home --config-path "$cfg" \
-              --promptString "Perfil (dc1|vps)=$profile" \
-              --promptString "Nombre para git=CI" \
-              --promptString "Email para git=ci@example.com"
-            chezmoi execute-template --source rig/home --config "$cfg" \
-              < rig/home/dot_zshrc.tmpl > /dev/null
-            chezmoi execute-template --source rig/home --config "$cfg" \
-              < rig/home/dot_config/herdr/config.toml.tmpl > /dev/null
-            chezmoi execute-template --source rig/home --config "$cfg" \
-              < rig/home/dot_config/helix/config.toml.tmpl > /dev/null
-            echo "render OK"
-          done
+          # install.sh is the repo entry point; rig/install.sh the P5 compat
+          # stub; harness + files are their components; rig/vps holds the
+          # host pieces (harden-vps, inbox cleanup) and rig/client the
+          # client helpers (clipboard grab). All must stay shellcheck-clean.
+          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh files/sync-work.sh rig/vps/harden-vps.sh rig/vps/prim-inbox-cleanup rig/client/img-grab rig/client/install-img-grab.sh
 
   rust:
     runs-on: ubuntu-latest

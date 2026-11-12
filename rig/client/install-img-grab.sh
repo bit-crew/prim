@@ -1,7 +1,7 @@
 #!/bin/sh
 # install-img-grab.sh - install the clipboard image grab on this client.
 #
-#   curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/rig/tools/install-img-grab.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/rig/client/install-img-grab.sh | sh
 #
 # What it does:
 #   1. installs img-grab into ~/.local/bin
@@ -55,7 +55,7 @@ if [ -f "$0" ] && [ -f "$(dirname "$0")/img-grab" ]; then
     install -m 755 "$(dirname "$0")/img-grab" "$TARGET"
     log "installed $TARGET (from $(dirname "$0")/img-grab)"
 else
-    URL="$RAW_BASE/rig/tools/img-grab"
+    URL="$RAW_BASE/rig/client/img-grab"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "$URL" -o "$TARGET.tmp"
     elif command -v wget >/dev/null 2>&1; then

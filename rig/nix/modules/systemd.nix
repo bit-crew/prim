@@ -8,19 +8,18 @@
 # Policy (the user's, S2): the timer runs TWICE A DAY and deletes ONLY what
 # is older than 12 hours, so the worst case retention is ~24h.
 #
-# The unit files are raw files under rig/systemd/ and the script under
-# rig/tools/: one source of truth. They are imported here and are also
-# installable by hand (which is how the cleanup landed on the VPS before
-# Nix was in place).
+# The unit files and the script are raw files under rig/vps/: one source
+# of truth. They are imported here and are also installable by hand (which
+# is how the cleanup landed on the VPS before Nix was in place).
 { config, lib, profile, ... }:
 
 {
   systemd.user.services.prim-inbox-cleanup = lib.optionalAttrs (profile == "vps") {
-    unit = "${../../systemd}/prim-inbox-cleanup.service";
+    unit = "${../../vps}/prim-inbox-cleanup.service";
   };
 
   systemd.user.timers.prim-inbox-cleanup = lib.optionalAttrs (profile == "vps") {
-    unit = "${../../systemd}/prim-inbox-cleanup.timer";
+    unit = "${../../vps}/prim-inbox-cleanup.timer";
     # The raw timer carries its own [Install] section, but home-manager does
     # not read it: the symlink that arms the timer is declared here.
     wantedBy = [ "timers.target" ];
@@ -28,7 +27,7 @@
 
   # The unit's ExecStart points at ~/.local/bin/prim-inbox-cleanup.
   home.file.".local/bin/prim-inbox-cleanup" = lib.optionalAttrs (profile == "vps") {
-    source = "${../../tools}/prim-inbox-cleanup";
+    source = "${../../vps}/prim-inbox-cleanup";
     executable = true;
   };
 }

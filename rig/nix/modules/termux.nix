@@ -13,12 +13,12 @@
 # in /home/<user>. This module writes under the home-manager home
 # directory, so activating the dc1 profile on the device needs that home
 # directory to point at the Termux home. Until that is settled, apply the
-# snippet from rig/docs/imagenes.md by hand.
+# snippet from rig/client/imagenes.md by hand.
 { config, lib, pkgs, profile, ... }:
 
 {
   home.file.".local/bin/img-grab" = lib.optionalAttrs (profile == "dc1") {
-    source = "${../../tools}/img-grab";
+    source = "${../../client}/img-grab";
     executable = true;
   };
 

@@ -21,7 +21,7 @@ It is not only financial. It is the operating system of your productive life.
 Prim ends up as a single runnable binary that manages everything. Today it
 selects and installs components (rig / harness / core) and already manages
 organizations (`prim org new|secret|list`: one git account per directory under
-~/work — see `rig/docs/organizaciones.md`). Every new management capability
+~/work — see `rig/common/organizaciones.md`). Every new management capability
 lands as a subcommand of that binary.
 
 ## Completed

@@ -7,7 +7,7 @@
 #      killer shoots random processes during login peaks.
 #   2. An nftables input filter that only allows lo, established/related,
 #      ICMP/ICMPv6, TCP 22 (ssh) and the mosh UDP range 60000-60010 (only
-#      from tailscale0, see rig/docs/mosh.md). Everything else inbound is
+#      from tailscale0, see rig/vps/mosh.md). Everything else inbound is
 #      dropped. Service-specific ports are owned by their stacks: e.g. gt's
 #      WorkSpaces web client opens its own tcp 8443 allow inside this table
 #      (its activate.sh + unit re-add it after every re-apply/reboot).

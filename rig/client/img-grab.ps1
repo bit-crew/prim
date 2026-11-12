@@ -13,7 +13,7 @@
     prints the remote path and copies that path into the local clipboard as
     text so the next paste puts the path in the prompt.
 
-    It is the Windows counterpart of rig/tools/img-grab and keeps the same
+    It is the Windows counterpart of rig/client/img-grab and keeps the same
     contract and the same flags.
 
     NOTE: there is no Windows runner in CI, so this script is not linted nor
