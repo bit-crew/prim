@@ -43,22 +43,22 @@ Prim exposes everything through **two planes with different privilege**, both ba
 
 ## Architectural Pillars
 
-- **[CONCEPT.md](./docs/CONCEPT.md):** Axioms, the Zero-Ops rule, the two-plane access model, and the opinionated stack.
-- **[FABRIC.md](./docs/FABRIC.md):** Data domains (TDS/IDS), persistence guarantees, and observability.
-- **[GOVERNANCE.md](./docs/GOVERNANCE.md):** Channel-centric demand flows, GitOps, and the identity/permissions model (IdP + two planes).
-- **[IPO (interactive mindmap)](https://bit-crew.github.io/prim/ipo.html):** Symptom-diagnosis map based on the Input-Process-Output framework. Source: `docs/ipo.mm.md`.
+- **[CONCEPT.md](./core/docs/CONCEPT.md):** Axioms, the Zero-Ops rule, the two-plane access model, and the opinionated stack.
+- **[FABRIC.md](./core/docs/FABRIC.md):** Data domains (TDS/IDS), persistence guarantees, and observability.
+- **[GOVERNANCE.md](./core/docs/GOVERNANCE.md):** Channel-centric demand flows, GitOps, and the identity/permissions model (IdP + two planes).
+- **[IPO (interactive mindmap)](https://bit-crew.github.io/prim/ipo.html):** Symptom-diagnosis map based on the Input-Process-Output framework. Source: `core/docs/ipo.mm.md`.
 
 ## Runbook & Backlog
 
-- **[BOOTSTRAP.md](./docs/BOOTSTRAP.md):** From absolute zero to a running core (R2 → IdP → SSO services → group-to-permission mapping). Per-project VPS is optional.
+- **[BOOTSTRAP.md](./core/docs/BOOTSTRAP.md):** From absolute zero to a running core (R2 → IdP → SSO services → group-to-permission mapping). Per-project VPS is optional.
 - **[TODO.md](./TODO.md):** Scope, architecture, agent (OAS) design, and pending decisions.
 
-## Reference Docs (`docs/`)
+## Reference Docs (`core/docs/`)
 
-- **[docs/stack-selection.md](./docs/stack-selection.md):** Stack decisions — access model (IdP + two planes), data layers, DB/queue, OAS candidates, code host.
-- **[docs/principios-operativos.md](./docs/principios-operativos.md):** Operating principles (minimalism, technological governance, ROE, debt, quality).
-- **[docs/votaciones-documentos.md](./docs/votaciones-documentos.md):** Voting and legal documents pattern (review pending).
-- **[docs/guia-tributaria-sas.md](./docs/guia-tributaria-sas.md):** Tax guide for a Colombian SAS (DIAN, UVT, reporting).
+- **[docs/stack-selection.md](./core/docs/stack-selection.md):** Stack decisions — access model (IdP + two planes), data layers, DB/queue, OAS candidates, code host.
+- **[docs/principios-operativos.md](./core/docs/principios-operativos.md):** Operating principles (minimalism, technological governance, ROE, debt, quality).
+- **[docs/votaciones-documentos.md](./core/docs/votaciones-documentos.md):** Voting and legal documents pattern (review pending).
+- **[docs/guia-tributaria-sas.md](./core/docs/guia-tributaria-sas.md):** Tax guide for a Colombian SAS (DIAN, UVT, reporting).
 
 ---
 "Keep it Simple. Stay Sovereign."
