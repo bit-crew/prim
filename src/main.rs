@@ -58,7 +58,7 @@ const COMPONENTS: &[Component] = &[
         key: "rig",
         name: "Rig (dev environment)",
         description: "toolchains, Node, herdr, editor, dotfiles, VPS infra. No agent.",
-        install_path: Some("rig/install.sh"),
+        install_path: Some("install.sh"),
         in_all: true,
     },
     Component {

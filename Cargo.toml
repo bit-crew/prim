@@ -2,7 +2,7 @@
 # Root package = the orchestrator (the `prim` umbrella: install selector).
 # Members = each component's installer (harness; core when it has code).
 # rig has no installer crate since P5: prim activates it over Nix
-# directly (src/nix.rs) and rig/install.sh is a thin compat stub.
+# directly (src/nix.rs); the pre-prim rig/install.sh stub is gone.
 [package]
 name = "prim"
 version = "0.1.0"

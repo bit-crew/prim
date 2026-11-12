@@ -15,11 +15,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Lint install scripts
         run: |
-          # install.sh is the repo entry point; rig/install.sh the P5 compat
-          # stub; harness + files are their components; rig/vps holds the
-          # host pieces (harden-vps, inbox cleanup) and rig/client the
-          # client helpers (clipboard grab). All must stay shellcheck-clean.
-          shellcheck install.sh rig/install.sh harness/install.sh files/install.sh files/sync-work.sh rig/vps/harden-vps.sh rig/vps/prim-inbox-cleanup rig/client/img-grab rig/client/install-img-grab.sh
+          # install.sh is the repo entry point; harness + files are their
+          # components; rig/vps holds the host pieces (harden-vps, inbox
+          # cleanup) and rig/client the client helpers (clipboard grab).
+          # All must stay shellcheck-clean.
+          shellcheck install.sh harness/install.sh files/install.sh files/sync-work.sh rig/vps/harden-vps.sh rig/vps/prim-inbox-cleanup rig/client/img-grab rig/client/install-img-grab.sh
 
   rust:
     runs-on: ubuntu-latest

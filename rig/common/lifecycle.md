@@ -3,10 +3,10 @@
 Desde P5 rig no tiene instalador propio: prim lo activa sobre Nix
 (home-manager contra el flake global `rig/nix`), escribe su receipt y lo
 desinstala con `home-manager uninstall`. El binario rig-install y su
-workflow de build están retirados; `rig/install.sh` quedó solo como stub de
-compatibilidad que redirige al instalador raíz de prim (los viejos links
-siguen funcionando: `install|update|uninstall` se mapean a los verbos de
-prim).
+workflow de build están retirados, y el viejo `rig/install.sh` de la era
+pre-prim también (2026-11-12): para instalar o actualizar, el camino es el
+instalador raíz de prim (`curl .../prim/main/install.sh | sh` → `prim
+install rig`, o `prim update`).
 
 ```
 prim install rig [--profile dc1|vps]  # bootstrap (os+nix+identidad) + home-manager switch + receipt
