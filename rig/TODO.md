@@ -7,12 +7,12 @@ samba, tailscale.
 
 ---
 
-## 1. Mosh — regla UDP en el host pendiente 🟡
+## 1. Mosh — activación en el host pendiente 🟡
 
-**Qué falta.** El diseño mosh (`rig/docs/mosh.md`) pide `iifname "tailscale0"
-udp dport 60000-60010 accept` en la tabla `vps_hardening`. `harden-vps.sh`
-(rama `feat/host-hardening`) aún no la tiene: al fusionar esa rama, sumar la
-regla al ruleset del script (antes del `drop`) en vez de la regla a mano.
+**Qué falta.** La regla UDP 60000–60010 por `tailscale0` ya vive en
+`rig/host/harden-vps.sh` (main). Falta en el host: re-aplicar el script
+(`sudo ./rig/host/harden-vps.sh --confirm`, tras actualizar el repo) y
+activar el paquete con `prim update rig`.
 
 **Cómo se verifica.** `nft list table inet vps_hardening` muestra la regla y
 un cliente mosh conecta y sobrevive un cambio Wi-Fi↔datos.

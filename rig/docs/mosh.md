@@ -33,28 +33,25 @@ conectar.
 
 ## Firewall: UDP 60000–60010 solo por Tailscale
 
-Regla nftables (misma tabla que `rig/host/harden-vps.sh`, rama
-`feat/host-hardening`):
+Regla nftables — **ya vive en `rig/host/harden-vps.sh`** (main), en la
+cadena `input` de la tabla `vps_hardening`, antes del `drop` final:
 
 ```
 iifname "tailscale0" udp dport 60000-60010 accept
 ```
 
-Va en la cadena `input` de la tabla `vps_hardening`, antes del `drop` final
-(que hoy solo permite lo, established/related, icmp, TCP 22 y TCP 8443). Sin
-esa línea, mosh no recibe los paquetes UDP y muere con "No connection
-received".
+Sin esa línea, mosh no recibe los paquetes UDP y muere con "No connection
+received". 11 puertos = hasta 11 sesiones Mosh simultáneas (una por puerto).
 
-- 11 puertos = hasta 11 sesiones Mosh simultáneas (una por puerto).
-- Aplicación en el host (hasta que `feat/host-hardening` fusione y la regla
-  viva en el script, ver `rig/TODO.md`):
+Aplicación en el host: re-ejecutar el script tras actualizar el repo
+(idempotente; recrea la tabla completa desde el ruleset, con auto-revert
+salvo con `--confirm`):
 
 ```
-sudo nft add rule inet vps_hardening input position 5 iifname "tailscale0" udp dport 60000-60010 accept
+sudo ./rig/host/harden-vps.sh --confirm
 ```
 
-(`position 5` la deja antes del `drop`; verificar con `sudo nft list chain
-inet vps_hardening input`.)
+Verificar con `sudo nft list chain inet vps_hardening input`.
 
 ## Clientes (por dispositivo)
 
