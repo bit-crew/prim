@@ -36,3 +36,11 @@ coincide con el estado objetivo del script.
   (nombre canonico del script). Observacion del apt: kernel 6.12.116
   pendiente de reinicio (preexistente, decision del usuario, no parte de
   este feature).
+- L4 (2026-11-12, puerto de gt fuera de prim, verbatim): "biene entoces
+  quita solo es aparte y agregala al repo de gt y aqeu este es quien
+  necesita activarlo apr apoder usarlo". El swap queda en prim (sirve a
+  todo el host); el allow TCP 8443 sale del ruleset de harden-vps.sh: es el
+  puerto del web client de gt y ahora lo abre su propia pila (activate.sh +
+  ExecStartPre de su unidad, idempotentes, dentro de esta misma tabla
+  vps_hardening porque el default-deny de prim dejaria caer una tabla
+  separada).

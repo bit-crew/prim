@@ -6,10 +6,12 @@
 #      3.7G RAM and ~1.3G free with agents running; without swap the OOM
 #      killer shoots random processes during login peaks.
 #   2. An nftables input filter that only allows lo, established/related,
-#      ICMP/ICMPv6, TCP 22 (ssh), TCP 8443 (workspaces URL) and the mosh UDP
-#      range 60000-60010 — the mosh ports ONLY from tailscale0 (see
-#      rig/docs/mosh.md). Everything else inbound is dropped. Docker's own
-#      tables are NOT flushed.
+#      ICMP/ICMPv6, TCP 22 (ssh) and the mosh UDP range 60000-60010 (only
+#      from tailscale0, see rig/docs/mosh.md). Everything else inbound is
+#      dropped. Service-specific ports are owned by their stacks: e.g. gt's
+#      WorkSpaces web client opens its own tcp 8443 allow inside this table
+#      (its activate.sh + unit re-add it after every re-apply/reboot).
+#      Docker's own tables are NOT flushed.
 #
 # Usage (root):
 #   harden-vps              swap + firewall with a 120s auto-revert timer
@@ -23,7 +25,7 @@ SWAP_SIZE_MB=2048
 NFT_TABLE=vps_hardening
 NFT_RULES_FILE=/etc/nftables.d/${NFT_TABLE}.nft
 REVERT_UNIT=vps-hardening-revert.timer
-ALLOW_TCP_PORTS="22, 8443"
+ALLOW_TCP_PORTS="22"
 MOSH_IFACE="tailscale0"
 MOSH_UDP_RANGE="60000-60010"
 
