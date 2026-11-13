@@ -210,8 +210,8 @@ pub fn merge(home: &Path, manifest: &Manifest, snapshots: &[Snapshot]) -> Vec<En
         let target = home.join(rel);
         let Some(snap) = snapshots.iter().find(|s| &s.path == rel) else {
             // The path did not exist before the switch: the rig created it.
-            // A store symlink becomes a real editable file; anything else
-            // (text-based home files) is already a regular file.
+            // A store symlink becomes a real editable file; a file home-
+            // manager wrote as text already is one.
             if is_store_symlink(&target) {
                 if materialize(&target) {
                     entries.push(Entry {
@@ -219,6 +219,11 @@ pub fn merge(home: &Path, manifest: &Manifest, snapshots: &[Snapshot]) -> Vec<En
                         action: Action::Created,
                     });
                 }
+            } else if target.exists() {
+                entries.push(Entry {
+                    path: rel.clone(),
+                    action: Action::Created,
+                });
             }
             continue;
         };
@@ -266,6 +271,12 @@ fn restore(target: &Path, snap: &Snapshot) {
         None => {
             if let Some(parent) = target.parent() {
                 let _ = fs::create_dir_all(parent);
+            }
+            // The path may now be a symlink into the nix store: writing
+            // through it would fail (read-only) or touch the store, so the
+            // link goes first and the user's file takes its place.
+            if fs::symlink_metadata(target).is_ok_and(|m| m.is_symlink()) {
+                let _ = fs::remove_file(target);
             }
             let _ = fs::write(target, &snap.content);
             let _ = fs::set_permissions(target, permissions(snap.mode));
@@ -554,6 +565,37 @@ mod tests {
         assert_eq!(entries[0].action, Action::Kept);
         assert!(!home.join(format!(".zshrc{RIG_SUFFIX}")).exists());
         fs::remove_dir_all(&home).unwrap();
+    }
+
+    /// Restoring a regular file over a store symlink must not write THROUGH
+    /// the link (that would touch the read-only nix store): the link goes
+    /// away and the user's file takes its place.
+    #[test]
+    fn merge_restores_over_a_store_symlink_without_writing_through_it() {
+        let home = tmp("overwrite-link");
+        let run = home.join("run");
+        fs::create_dir_all(&run).unwrap();
+        let store = tmp("home-manager-files-store");
+        fs::write(store.join("zshrc"), "zshrc del rig\n").unwrap();
+        let target = home.join(".zshrc");
+        fs::write(&target, "mi zshrc\n").unwrap();
+        let manifest = Manifest {
+            paths: vec![".zshrc".into()],
+        };
+        let snaps = snapshot(&home, &manifest, &run);
+        // home-manager replaces the path with a symlink into the store.
+        fs::remove_file(&target).unwrap();
+        std::os::unix::fs::symlink(store.join("zshrc"), &target).unwrap();
+        merge(&home, &manifest, &snaps);
+        // The user's file is back, and the store file was not written to.
+        assert!(!fs::symlink_metadata(&target).unwrap().is_symlink());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "mi zshrc\n");
+        assert_eq!(
+            fs::read_to_string(store.join("zshrc")).unwrap(),
+            "zshrc del rig\n"
+        );
+        fs::remove_dir_all(&home).unwrap();
+        fs::remove_dir_all(&store).unwrap();
     }
 
     /// A path the rig creates for the first time becomes a real file, not
