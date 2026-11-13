@@ -207,6 +207,19 @@ fn identity_step(
             path.display()
         );
         summary.skipped.push("identidad (ya existe)".into());
+        orgs_step(summary, home);
+        return Ok(());
+    }
+    // An existing global git user is adopted silently — never re-asked (the
+    // user's rule: a machine that already has a global identity keeps it).
+    if let Some((n, e)) = fs::read_to_string(home.join(".gitconfig"))
+        .ok()
+        .and_then(|t| parse_git_identity(&t))
+    {        fs::create_dir_all(path.parent().expect("identity path has a parent"))?;
+        fs::write(&path, identity_toml(&n, &e))?;
+        println!("[prim] identidad detectada en ~/.gitconfig ({n} <{e}>); se adopta sin preguntar.");
+        summary.ran.push(format!("identidad (detectada: {n} <{e}>)"));
+        orgs_step(summary, home);
         return Ok(());
     }
     let (name, email) = if tty {
@@ -226,7 +239,124 @@ fn identity_step(
     fs::write(&path, identity_toml(&name, &email))?;
     println!("[prim] identidad escrita: {}", path.display());
     summary.ran.push(format!("identidad ({name} <{email}>)"));
+    orgs_step(summary, home);
     Ok(())
+}
+
+/// Step 3b (orgs): the rig's ~/.gitconfig includes ~/.config/git/orgs.config
+/// instead of inline [includeIf] entries, so a pre-existing ~/.gitconfig
+/// with inline stanzas keeps working: they are moved into orgs.config here
+/// (verbatim, once; entries already present are never duplicated). The
+/// original ~/.gitconfig is never touched — the activation backs it up.
+fn orgs_step(summary: &mut Summary, home: &Path) {
+    let Ok(text) = fs::read_to_string(home.join(".gitconfig")) else {
+        return;
+    };
+    let stanzas = parse_include_stanzas(&text);
+    if stanzas.is_empty() {
+        return;
+    }
+    let orgs = home.join(".config/git/orgs.config");
+    let existing = fs::read_to_string(&orgs).unwrap_or_default();
+    let fresh: Vec<String> = stanzas
+        .into_iter()
+        .filter(|s| match stanza_path(s) {
+            Some(p) => !existing.contains(p.as_str()),
+            None => true,
+        })
+        .collect();
+    if fresh.is_empty() {
+        summary.skipped.push("orgs (includeIf ya migrados)".into());
+        return;
+    }
+    let mut body = existing;
+    if body.is_empty() {
+        body.push_str("# Managed by prim: per-org git identities (includeIf chain).\n");
+    }
+    for s in fresh {
+        body.push_str(&s);
+        body.push('\n');
+    }
+    if let Some(dir) = orgs.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    if fs::write(&orgs, body).is_ok() {
+        println!(
+            "[prim] includeIf de ~/.gitconfig migrados a {} (el original queda respaldado por la activacion).",
+            orgs.display()
+        );
+        summary.ran.push("orgs (migracion de includeIf)".into());
+    }
+}
+
+/// Global [user] name/email parsed from a ~/.gitconfig body. A half-written
+/// user section still counts (the missing half falls back to the
+/// placeholder): the file exists, so the machine was configured already and
+/// asking again would be noise.
+fn parse_git_identity(text: &str) -> Option<(String, String)> {
+    let mut name: Option<String> = None;
+    let mut email: Option<String> = None;
+    let mut in_user = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix('[') {
+            in_user = rest.starts_with("user");
+            continue;
+        }
+        let Some((k, v)) = t.split_once('=') else { continue };
+        if !in_user {
+            continue;
+        }
+        let v = v.trim().trim_matches('"');
+        match k.trim() {
+            "name" if !v.is_empty() => name = Some(v.into()),
+            "email" if !v.is_empty() => email = Some(v.into()),
+            _ => {}
+        }
+    }
+    if name.is_none() && email.is_none() {
+        return None;
+    }
+    Some((
+        name.unwrap_or_else(|| PLACEHOLDER_NAME.into()),
+        email.unwrap_or_else(|| PLACEHOLDER_EMAIL.into()),
+    ))
+}
+
+/// Verbatim [includeIf \"...\"] stanzas (header + indented body lines) from
+/// a ~/.gitconfig body, in order.
+fn parse_include_stanzas(text: &str) -> Vec<String> {
+    let mut stanzas: Vec<String> = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        if line.trim_start().starts_with("[includeIf") {
+            if !current.is_empty() {
+                stanzas.push(current.join("\n"));
+            }
+            current = vec![line];
+        } else if !current.is_empty() {
+            if line.trim_start().starts_with('[') {
+                stanzas.push(current.join("\n"));
+                current = Vec::new();
+            } else {
+                current.push(line);
+            }
+        }
+    }
+    if !current.is_empty() {
+        stanzas.push(current.join("\n"));
+    }
+    stanzas
+}
+
+/// The `path = ...` value of one stanza, when present.
+fn stanza_path(stanza: &str) -> Option<String> {
+    stanza.lines().find_map(|l| {
+        l.trim()
+            .strip_prefix("path")?
+            .split_once('=')
+            .map(|(_, v)| v.trim().to_string())
+    })
 }
 
 /// ~/.config/prim/identity.toml for a given home.
@@ -334,5 +464,47 @@ mod tests {
             assert_eq!(s.ran.len(), 0, "{name}");
             assert_eq!(s.skipped.len(), 1, "{name}");
         }
+    }
+
+    /// A real global identity is adopted; placeholders and halves are not.
+    #[test]
+    fn parse_git_identity_rules() {
+        let real = "[user]\n    name = \"Johan Marin\"\n    email = \"j@x.com\"\n[core]\n    editor = hx\n";
+        assert_eq!(
+            parse_git_identity(real),
+            Some(("Johan Marin".into(), "j@x.com".into()))
+        );
+        // A chezmoi-era placeholder is still an existing identity: the
+        // machine was configured, so prim adopts it instead of asking.
+        let placeholder =
+            "[user]\n    name = \"devlab\"\n    email = \"devlab@localhost\"\n";
+        assert_eq!(
+            parse_git_identity(placeholder),
+            Some((PLACEHOLDER_NAME.into(), PLACEHOLDER_EMAIL.into()))
+        );
+        // Half a user section: the missing half falls back to the placeholder.
+        assert_eq!(
+            parse_git_identity("[user]\n    name = \"x\"\n"),
+            Some(("x".into(), PLACEHOLDER_EMAIL.into()))
+        );
+        // No user section at all: nothing to adopt.
+        assert_eq!(parse_git_identity("[core]\n    editor = hx\n"), None);
+    }
+
+    /// includeIf stanzas come out verbatim with their path, and only those.
+    #[test]
+    fn parse_include_stanzas_rules() {
+        let cfg = "[user]\n name = a\n[includeIf \"gitdir:~/work/knt/\"]\n\tpath = /home/x/.gitconfig-konecta\n[core]\n editor = hx\n[includeIf \"gitdir:~/work/gt/\"]\n path = /home/x/.gitconfig-gt\n";
+        let stanzas = parse_include_stanzas(cfg);
+        assert_eq!(stanzas.len(), 2);
+        assert_eq!(
+            stanza_path(&stanzas[0]).as_deref(),
+            Some("/home/x/.gitconfig-konecta")
+        );
+        assert_eq!(
+            stanza_path(&stanzas[1]).as_deref(),
+            Some("/home/x/.gitconfig-gt")
+        );
+        assert!(parse_include_stanzas("[user]\n name = a\n").is_empty());
     }
 }

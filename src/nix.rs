@@ -19,6 +19,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::bootstrap::{identity_path, PLACEHOLDER_EMAIL, PLACEHOLDER_NAME};
+use crate::dotfiles;
 use crate::lifecycle::{json_field, receipts_dir};
 
 /// home-manager runner flake (same ref the rig flake.lock pins).
@@ -57,10 +58,11 @@ pub fn ensure_nix_path() {
     std::env::set_var("PATH", &new_path);
 }
 
-/// PRIM_GIT_NAME/PRIM_GIT_EMAIL from ~/.config/prim/identity.toml, with the
-/// bootstrap placeholders when the file is missing or incomplete — the
-/// flake reads both via guarded builtins.getEnv at switch time.
-fn identity_env() -> Vec<(&'static str, String)> {
+/// Identity env for the nix calls: PRIM_GIT_NAME/PRIM_GIT_EMAIL from
+/// ~/.config/prim/identity.toml, with the bootstrap placeholders when the
+/// file is missing or incomplete — the flake reads both via guarded
+/// builtins.getEnv at switch time.
+pub fn identity_env() -> Vec<(&'static str, String)> {
     let text = dirs::home_dir()
         .and_then(|h| fs::read_to_string(identity_path(&h)).ok())
         .unwrap_or_default();
@@ -126,9 +128,17 @@ impl Plan {
 
 /// Activation plan for a profile: home-manager switch from the pushed
 /// flake. `-b` moves conflicting dotfiles aside; `--impure` reads identity.
+/// HOME_MANAGER_BACKUP_OVERWRITE=1 lets a stale `<file>.prim-backup` be
+/// replaced: prim keeps its own snapshots (see dotfiles), so home-manager's
+/// backup slot is free to be reused instead of failing the activation.
 fn switch_plan(profile: &str) -> Plan {
+    let mut env = identity_env();
+    env.push((
+        "HOME_MANAGER_BACKUP_OVERWRITE",
+        "1".to_string(),
+    ));
     Plan {
-        env: identity_env(),
+        env,
         args: vec![
             "run".into(),
             HOME_MANAGER_REF.into(),
@@ -158,19 +168,75 @@ fn uninstall_plan() -> Plan {
 
 /// Activate the rig profile over Nix (install + update share this: the
 /// github ref re-evaluates to latest main on every run).
+///
+/// The dotfiles policy is "merge, never clobber": the managed paths are
+/// snapshotted before the switch, and after it the user's own versions are
+/// put back, the rig's versions archived as `<file>.prim-rig`, and the
+/// differences reported (see dotfiles).
 pub fn activate(profile: &str) -> bool {
     ensure_nix_path();
     println!("[prim] activando rig (perfil {profile}) con home-manager...");
-    run_or_show(&switch_plan(profile))
+    let home = dirs::home_dir();
+    let env = identity_env();
+    let manifest = dotfiles::resolve_manifest(profile, &env);
+    let snapshots = match (&home, &manifest) {
+        (Some(h), Some(m)) => {
+            match dotfiles::make_run_dir(h, &stamp()) {
+                Ok(dir) => {
+                    println!("[prim] dotfiles: {m} rutas gestionadas; copia de seguridad en {}", dir.display());
+                    dotfiles::snapshot(h, m, &dir)
+                }
+                Err(_) => Vec::new(),
+            }
+        }
+        _ => Vec::new(),
+    };
+    let ok = run_or_show(&switch_plan(profile));
+    if ok {
+        if let (Some(h), Some(m)) = (&home, &manifest) {
+            let entries = dotfiles::merge(h, m, &snapshots);
+            dotfiles::print_report(&entries);
+        }
+    }
+    ok
 }
 
 /// Deactivate the rig: `home-manager uninstall`. The /nix store, the agent
 /// stack and ~/work are untouched — only home-manager's links and dotfiles.
+/// The user's own dotfiles are snapshotted first and restored if the
+/// uninstall takes them down with the managed links.
 pub fn deactivate() -> bool {
     ensure_nix_path();
     println!("[prim] nota: /nix (store), el stack del agente y ~/work no se tocan.");
     println!("[prim] desactivando rig (home-manager uninstall)...");
-    run_or_show(&uninstall_plan())
+    let home = dirs::home_dir();
+    let profile = receipt_profile().unwrap_or_else(|| DEFAULT_PROFILE.to_string());
+    let manifest = dotfiles::resolve_manifest(&profile, &identity_env());
+    let snapshots = match (&home, &manifest) {
+        (Some(h), Some(m)) => match dotfiles::make_run_dir(h, &stamp()) {
+            Ok(dir) => dotfiles::snapshot(h, m, &dir),
+            Err(_) => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    let ok = run_or_show(&uninstall_plan());
+    if ok {
+        if let Some(h) = &home {
+            let restored = dotfiles::restore_missing(h, &snapshots);
+            if restored > 0 {
+                println!("[prim] dotfiles: {restored} archivo(s) tuyos restaurados tras la desinstalacion.");
+            }
+        }
+    }
+    ok
+}
+
+/// Timestamp for the snapshot run directory (unix seconds).
+fn stamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "0".into())
 }
 
 /// Execute a plan, or print it verbatim under PRIM_DRY_RUN=1.

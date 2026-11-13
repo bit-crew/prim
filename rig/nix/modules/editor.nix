@@ -334,7 +334,9 @@ in
   };
 
   # herdr has no home-manager module; plain file generation, vps only.
-  xdg.configFile = lib.optionalAttrs (profile == "vps") {
+  # mkIf (not optionalAttrs): an empty attrset would still declare the
+  # option and home-manager would abort when the profile does not apply.
+  xdg.configFile = lib.mkIf (profile == "vps") {
     "herdr/config.toml".text = ''
       # ~/.config/herdr/config.toml — theme: warm charcoal (shared palette).
 

@@ -17,18 +17,21 @@
 { config, lib, pkgs, profile, ... }:
 
 {
-  home.file.".local/bin/img-grab" = lib.optionalAttrs (profile == "dc1") {
+  # Profile-gated options use mkIf (not optionalAttrs): an empty attrset
+  # still DECLARES the option, and home-manager then aborts with "the
+  # option ... was accessed but has no value defined".
+  home.file.".local/bin/img-grab" = lib.mkIf (profile == "dc1") {
     source = "${../../client}/img-grab";
     executable = true;
   };
 
   # Managed by the rig: a local edit is overwritten on the next activation.
-  home.file.".termux/termux.properties" = lib.optionalAttrs (profile == "dc1") {
+  home.file.".termux/termux.properties" = lib.mkIf (profile == "dc1") {
     source = pkgs.writeText "termux.properties" ''
       # Managed by the rig (prim-clipboard).
       #
-      # CTRL+ALT+G runs img-grab: it grabs the clipboard image, pushes it to
-      # the VPS inbox and leaves the remote path in the clipboard as text.
+      # CTRL+ALT+G runs img-grab: it grabs the clipboard image, pushes it
+      # to the VPS inbox and leaves the remote path in the clipboard as text.
       extra-keys = CTRL+ALT+G,~/.local/bin/img-grab\n
     '';
   };

@@ -31,6 +31,7 @@ use std::process::{Command, Stdio};
 
 mod bootstrap;
 mod doctor;
+mod dotfiles;
 mod lifecycle;
 mod nix;
 mod org;

@@ -23,7 +23,30 @@ prim doctor [--prune]                 # diagnóstico de solo lectura; --prune = 
 1. `prim bootstrap` (S8): apt update/upgrade, Nix single-user (instalador
    oficial `--no-daemon`) e identidad estática en
    `~/.config/prim/identity.toml`. Todo idempotente: cada paso ya presente
-   se omite.
+   se omite. La identidad **nunca se pregunta** si ya existe: un
+   `~/.gitconfig` con usuario global real se adopta en silencio (los
+   placeholders no cuentan); solo sin nada se pregunta por TTY. Los
+   `includeIf` de un `~/.gitconfig` preexistente se migran automáticamente
+   a `~/.config/git/orgs.config` — el archivo original queda respaldado por
+   la activación, no se sobreescribe nada.
+
+2. Activación del rig (home-manager): política **merge, never clobber**.
+   Home-manager reemplaza cada ruta administrada por un symlink al store
+   (`home-files`), así que sobre una máquina que ya tenía dotfiles propios
+   eso transferiría la propiedad de tu configuración al repo. Prim lo
+   evita en tres pasos:
+
+   - antes del switch, copia cada ruta administrada que ya existe a
+     `~/.local/state/prim/dotfiles/<stamp>/` (el manifiesto se lee de la
+     propia generación de home-manager, nunca de una lista fija);
+   - después del switch, tu versión vuelve a su sitio, la del rig queda
+     archivada como `<archivo>.prim-rig` y el diff se imprime;
+   - las rutas que el rig crea de cero quedan como archivos reales
+     editables (no symlinks al store).
+
+   `HOME_MANAGER_BACKUP_OVERWRITE=1` acompaña al switch: sin él, un
+   `<archivo>.prim-backup` viejo (de una corrida anterior) hace fallar la
+   activacion entera de home-manager.
 2. Activación: `nix run home-manager -- switch --flake
    github:bit-crew/prim?dir=rig/nix#<perfil> -b prim-backup --impure`
    (con `PRIM_GIT_NAME`/`PRIM_GIT_EMAIL` desde la identidad). Los
