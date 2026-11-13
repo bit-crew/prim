@@ -215,10 +215,15 @@ fn identity_step(
     if let Some((n, e)) = fs::read_to_string(home.join(".gitconfig"))
         .ok()
         .and_then(|t| parse_git_identity(&t))
-    {        fs::create_dir_all(path.parent().expect("identity path has a parent"))?;
+    {
+        fs::create_dir_all(path.parent().expect("identity path has a parent"))?;
         fs::write(&path, identity_toml(&n, &e))?;
-        println!("[prim] identidad detectada en ~/.gitconfig ({n} <{e}>); se adopta sin preguntar.");
-        summary.ran.push(format!("identidad (detectada: {n} <{e}>)"));
+        println!(
+            "[prim] identidad detectada en ~/.gitconfig ({n} <{e}>); se adopta sin preguntar."
+        );
+        summary
+            .ran
+            .push(format!("identidad (detectada: {n} <{e}>)"));
         orgs_step(summary, home);
         return Ok(());
     }
@@ -303,7 +308,9 @@ fn parse_git_identity(text: &str) -> Option<(String, String)> {
             in_user = rest.starts_with("user");
             continue;
         }
-        let Some((k, v)) = t.split_once('=') else { continue };
+        let Some((k, v)) = t.split_once('=') else {
+            continue;
+        };
         if !in_user {
             continue;
         }
@@ -476,8 +483,7 @@ mod tests {
         );
         // A chezmoi-era placeholder is still an existing identity: the
         // machine was configured, so prim adopts it instead of asking.
-        let placeholder =
-            "[user]\n    name = \"devlab\"\n    email = \"devlab@localhost\"\n";
+        let placeholder = "[user]\n    name = \"devlab\"\n    email = \"devlab@localhost\"\n";
         assert_eq!(
             parse_git_identity(placeholder),
             Some((PLACEHOLDER_NAME.into(), PLACEHOLDER_EMAIL.into()))

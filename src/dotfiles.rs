@@ -86,13 +86,7 @@ pub struct Snapshot {
 pub fn resolve_manifest(profile: &str, env: &[(&str, String)]) -> Option<Manifest> {
     let attr = format!("{RIG_FLAKE_REF}#homeConfigurations.{profile}.activationPackage");
     let mut cmd = Command::new("nix");
-    cmd.args([
-        "build",
-        "--no-link",
-        "--print-out-paths",
-        "--impure",
-        &attr,
-    ]);
+    cmd.args(["build", "--no-link", "--print-out-paths", "--impure", &attr]);
     for (k, v) in env {
         cmd.env(k, v);
     }
@@ -120,7 +114,9 @@ fn collect_files(dir: &Path, prefix: &Path, out: &mut Vec<String>) {
         let path = entry.path();
         let name = entry.file_name();
         let rel = prefix.join(&name);
-        let Ok(kind) = entry.file_type() else { continue };
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
         if kind.is_dir() {
             collect_files(&path, &rel, out);
         } else {
@@ -250,7 +246,10 @@ pub fn merge(home: &Path, manifest: &Manifest, snapshots: &[Snapshot]) -> Vec<En
         }
         restore(&target, snap);
         let diff = match (&rig, &snap.link) {
-            (Some(rig), None) => unified_diff(&String::from_utf8_lossy(&snap.content), &String::from_utf8_lossy(rig)),
+            (Some(rig), None) => unified_diff(
+                &String::from_utf8_lossy(&snap.content),
+                &String::from_utf8_lossy(rig),
+            ),
             _ => String::new(),
         };
         entries.push(Entry {
@@ -388,7 +387,9 @@ pub fn unified_diff(a: &str, b: &str) -> String {
                 b_count += 1;
             }
         }
-        out.push_str(&format!("@@ -{a_start},{a_count} +{b_start},{b_count} @@\n"));
+        out.push_str(&format!(
+            "@@ -{a_start},{a_count} +{b_start},{b_count} @@\n"
+        ));
         for (op, _, _) in &numbered[start..end] {
             match op {
                 Op::Keep(l) => out.push_str(&format!(" {l}\n")),
@@ -542,7 +543,10 @@ mod tests {
         let entries = merge(&home, &manifest, &snaps);
         assert_eq!(entries.len(), 1);
         assert!(matches!(entries[0].action, Action::Restored { .. }));
-        assert_eq!(fs::read_to_string(home.join(".zshrc")).unwrap(), "mi zshrc\n");
+        assert_eq!(
+            fs::read_to_string(home.join(".zshrc")).unwrap(),
+            "mi zshrc\n"
+        );
         assert_eq!(
             fs::read_to_string(home.join(format!(".zshrc{RIG_SUFFIX}"))).unwrap(),
             "zshrc del rig\n"
@@ -642,7 +646,9 @@ mod tests {
         fs::remove_file(home.join(".link")).unwrap();
         fs::write(home.join(".link"), "version del rig\n").unwrap();
         merge(&home, &manifest, &snaps);
-        assert!(fs::symlink_metadata(home.join(".link")).unwrap().is_symlink());
+        assert!(fs::symlink_metadata(home.join(".link"))
+            .unwrap()
+            .is_symlink());
         assert_eq!(
             fs::read_to_string(home.join(".link")).unwrap(),
             "contenido\n"

@@ -133,10 +133,7 @@ impl Plan {
 /// backup slot is free to be reused instead of failing the activation.
 fn switch_plan(profile: &str) -> Plan {
     let mut env = identity_env();
-    env.push((
-        "HOME_MANAGER_BACKUP_OVERWRITE",
-        "1".to_string(),
-    ));
+    env.push(("HOME_MANAGER_BACKUP_OVERWRITE", "1".to_string()));
     Plan {
         env,
         args: vec![
@@ -180,15 +177,16 @@ pub fn activate(profile: &str) -> bool {
     let env = identity_env();
     let manifest = dotfiles::resolve_manifest(profile, &env);
     let snapshots = match (&home, &manifest) {
-        (Some(h), Some(m)) => {
-            match dotfiles::make_run_dir(h, &stamp()) {
-                Ok(dir) => {
-                    println!("[prim] dotfiles: {m} rutas gestionadas; copia de seguridad en {}", dir.display());
-                    dotfiles::snapshot(h, m, &dir)
-                }
-                Err(_) => Vec::new(),
+        (Some(h), Some(m)) => match dotfiles::make_run_dir(h, &stamp()) {
+            Ok(dir) => {
+                println!(
+                    "[prim] dotfiles: {m} rutas gestionadas; copia de seguridad en {}",
+                    dir.display()
+                );
+                dotfiles::snapshot(h, m, &dir)
             }
-        }
+            Err(_) => Vec::new(),
+        },
         _ => Vec::new(),
     };
     let ok = run_or_show(&switch_plan(profile));
