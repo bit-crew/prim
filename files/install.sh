@@ -38,6 +38,9 @@ SMB_CONF="/etc/samba/smb.conf"
 SMB_CONF_BAK="/etc/samba/smb.conf.prim.bak"
 CONF_MARKER="prim:files"
 RECEIPT="${HOME}/.local/share/prim/files.receipt.json"
+# The generated SMB password: owner-only, never in the receipt, never in args.
+CRED_DIR="${HOME}/.local/state/prim/files"
+CRED_FILE="${CRED_DIR}/smb-password"
 TS_INSTALL_URL="https://tailscale.com/install.sh"
 
 # Firewall: prim owns the host baseline (rig/vps/harden-vps.sh, table
@@ -186,33 +189,53 @@ tailscale_login() {
 }
 
 set_smb_password() {
-    # TTY only: smbpasswd itself prompts twice; passwords never travel in
-    # args or env (S11). On a re-run the existing password is KEPT: pdbedit
-    # listing the user means a password is already set, so the chained
-    # install (rig vps) never resets it and repairs stay TTY-free.
+    # The password is GENERATED, never typed and never asked for
+    # interactively: the user does not want a manual step, and a prompt
+    # in a non-TTY install is exactly what wedged this component before.
     #
-    # Without a TTY the component does NOT abort: the share, the firewall
-    # rule and the permissions are already in place, and the only thing
-    # missing is the credential. The install finishes and says what is
-    # left, instead of leaving the component half-installed with no
-    # receipt at all.
-    if sudo pdbedit -L -u "$SMB_USER" >/dev/null 2>&1; then
+    #   - stored once, owner-only, in ~/.local/state/prim/files/
+    #   - the secret never travels in args (ps), env, or the receipt
+    #   - 'smbpasswd -a -s' takes the password from stdin, so no TTY is
+    #     needed at all
+    #
+    # Idempotency: if our credential file AND the passdb agree, the
+    # password is kept untouched (a re-install never invalidates the key
+    # already saved in the phone). If the passdb has a password we cannot
+    # read back (file lost, host migrated), the only honest fix is a new
+    # one: we rotate it and store the new truth.
+    if [ -s "$CRED_FILE" ] && sudo pdbedit -L -u "$SMB_USER" >/dev/null 2>&1; then
         log "clave SMB de '$SMB_USER' ya definida; se conserva."
         SMB_PASSWORD_SET=true
         return 0
     fi
-    if [ -t 0 ]; then
-        log "define la clave SMB para '$SMB_USER' (se pide dos veces)."
-        sudo smbpasswd -a "$SMB_USER"
-        log "clave SMB fijada para '$SMB_USER'."
-        SMB_PASSWORD_SET=true
-    else
-        err "sin TTY no se puede definir la clave SMB de '$SMB_USER'."
-        err "el share queda ARMADO pero sin credencial: defini la clave con"
-        err "  sudo smbpasswd '$SMB_USER'"
-        err "y despues 'prim install files' para cerrar el componente."
-        SMB_PASSWORD_SET=false
+    if sudo pdbedit -L -u "$SMB_USER" >/dev/null 2>&1; then
+        log "hay una clave SMB previa sin copia local; se genera una nueva."
     fi
+    rotate_smb_password
+}
+
+rotate_smb_password() {
+    # 24 bytes from the kernel CSPRNG, hex: 48 chars, 192 bits. od with a
+    # fixed count avoids the SIGPIPE that a `tr | head` pipeline risks.
+    pw="$(LC_ALL=C od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
+    if [ "${#pw}" -lt 32 ]; then
+        err "no se pudo generar la clave SMB (PRNG sin datos)."
+        exit 1
+    fi
+    mkdir -p "$CRED_DIR"
+    (umask 077 && printf '%s\n' "$pw" > "$CRED_FILE")
+    chmod 600 "$CRED_FILE" 2>/dev/null || true
+    # smbpasswd reads "password" and "confirmation" from stdin with -s.
+    if ! printf '%s\n%s\n' "$pw" "$pw" | sudo smbpasswd -a -s "$SMB_USER"; then
+        err "smbpasswd fallo; la clave no quedo aplicada."
+        rm -f "$CRED_FILE"
+        exit 1
+    fi
+    SMB_PASSWORD_SET=true
+    log "clave SMB generada para '$SMB_USER' (48 chars, aleatoria, 192 bits)."
+    log "  $pw"
+    log "  guardada en $CRED_FILE (permiso 600). Volvela a ver con: prim files password"
+    log "  Copiala al keychain del iPhone; despues no hace falta volver a escribirla."
 }
 
 write_receipt() {
@@ -231,6 +254,7 @@ write_receipt() {
         printf '"share_user": "%s",\n' "$SMB_USER"
         printf '"interface": "tailscale0",\n'
         printf '"smb_password_set": "%s",\n' "${SMB_PASSWORD_SET:-false}"
+        printf '"credential_file": "%s",\n' "$CRED_FILE"
         printf '"services": "smbd tailscaled"\n'
         printf '}\n'
     } > "$RECEIPT"
@@ -247,9 +271,18 @@ summary() {
         err "iPhone: Archivos > Conectar al servidor > smb://<IP-TAILSCALE>/work"
     fi
     if [ "${SMB_PASSWORD_SET:-false}" = "false" ]; then
-        log "PENDIENTE: la clave SMB de '$SMB_USER' todavia no esta definida."
-        log "  sudo smbpasswd '$SMB_USER'   (despues, 'prim install files' lo cierra)"
+        log "PENDIENTE: la clave SMB de '$SMB_USER' no quedo definida."
+        log "  generala con: prim files password --rotate"
     fi
+}
+
+cmd_rotate_password() {
+    # Verb for 'prim files password --rotate': only the credential
+    # changes, nothing else in the host.
+    require_sudo
+    ensure_user_group
+    rotate_smb_password
+    write_receipt
 }
 
 cmd_install() {
@@ -360,8 +393,9 @@ case "${1:-install}" in
     install)   cmd_install ;;
     update)    cmd_update ;;
     uninstall) cmd_uninstall ;;
+    rotate-password) cmd_rotate_password ;;
     *)
-        err "uso: files/install.sh [install|update|uninstall] (por defecto: install)"
+        err "uso: files/install.sh [install|update|uninstall|rotate-password] (por defecto: install)"
         exit 2
         ;;
 esac

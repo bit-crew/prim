@@ -18,6 +18,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::files;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -97,6 +99,17 @@ fn files_report(receipts: Option<&Path>) {
     );
     println!("[prim]   files: tailscaled={}", svc_state("tailscaled"));
     println!("[prim]   files: ip de tailscale={}", ts_ip());
+    // The credential is a secret: doctor reports THAT it exists and where,
+    // never its value.
+    match files::read_password() {
+        Some(_) => println!(
+            "[prim]   files: clave SMB presente ({}) — 'prim files password' la muestra.",
+            files::credential_path().display()
+        ),
+        None => {
+            println!("[prim]   files: SIN clave SMB — generala con 'prim files password --rotate'.")
+        }
+    }
     if Path::new(&share).is_dir() {
         println!("[prim]   files: {share} existe.");
     } else {

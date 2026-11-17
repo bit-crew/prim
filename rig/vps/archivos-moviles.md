@@ -110,14 +110,30 @@ comparten lectura y escritura.
 
 ## Clave SMB
 
-Se define durante la instalacion (se pide dos veces). Para cambiarla:
+**No hay paso manual.** El instalador la genera sola: 48 caracteres
+aleatorios (192 bits) del CSPRNG del kernel, la aplica con
+`smbpasswd -a -s` (sin TTY, sin prompt) y la guarda en
+`~/.local/state/prim/files/smb-password` con permiso `600`.
+
+- El secreto **nunca** viaja en argumentos, ni en variables de entorno, ni
+  en el receipt: queda en un solo archivo, legible solo por tu usuario.
+- Un re-install **no** la pisa: si el archivo y la passdb coinciden, la
+  clave se conserva (la que ya tenes en el keychain del iPhone sigue
+  valiendo).
+- Si la passdb tiene una clave que no podemos leer (host migrado, archivo
+  perdido), se genera una nueva: es la unica salida honesta.
+
+Para verla:
 
 ```
-sudo smbpasswd filesmb
+prim files password
 ```
 
-Si perdiste la clave, re-ejecuta `prim install files` desde una terminal:
-todo es idempotente y vuelve a pedirla.
+Para rotarla (invalida la del iPhone):
+
+```
+prim files password --rotate
+```
 
 ## Diagnostico
 

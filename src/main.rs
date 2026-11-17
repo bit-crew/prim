@@ -32,6 +32,7 @@ use std::process::{Command, Stdio};
 mod bootstrap;
 mod doctor;
 mod dotfiles;
+mod files;
 mod lifecycle;
 mod nix;
 mod org;
@@ -117,6 +118,21 @@ fn main() {
             lifecycle::update();
         }
         Some("uninstall") => lifecycle::uninstall(&args[1..]),
+        // `prim files password [--rotate]` — the SMB credential of the
+        // files component. The component generates it; this only reads
+        // it back (or asks for a new one).
+        Some("files") => match files::parse_args(&args[1..]) {
+            files::FilesCmd::Password => {
+                if !files::print_password() {
+                    std::process::exit(1);
+                }
+            }
+            files::FilesCmd::Rotate => {
+                if !files::rotate_password() {
+                    std::process::exit(1);
+                }
+            }
+        },
         Some("status") => {
             if args.len() != 1 {
                 eprintln!("uso: prim status");
