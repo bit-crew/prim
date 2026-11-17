@@ -107,8 +107,20 @@ fn os_step(summary: &mut Summary, skip_apt: bool, is_debian: bool) {
         return;
     }
     for verb in ["update", "upgrade"] {
+        // noninteractive + needrestart in list mode: apt must never block
+        // on a debconf dialog (needrestart pops one for the pending kernel
+        // and another asking which daemons to restart; restarting sshd
+        // there kills the session running the bootstrap).
         let ok = Command::new("sudo")
-            .args(["-n", "apt-get", verb, "-y"])
+            .args([
+                "-n",
+                "env",
+                "DEBIAN_FRONTEND=noninteractive",
+                "NEEDRESTART_MODE=l",
+                "apt-get",
+                verb,
+                "-y",
+            ])
             .status()
             .map(|s| s.success())
             .unwrap_or(false);

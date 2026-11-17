@@ -232,7 +232,11 @@ cmd_install() {
     require_sudo
     log "instalando samba (apt)..."
     sudo apt-get update
-    sudo apt-get install -y samba
+    # noninteractive + needrestart in list mode: an apt run must never
+    # block on a debconf dialog (needrestart pops one for the kernel and
+    # another asking which daemons to restart, and restarting sshd there
+    # kills the very session running the install).
+    sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y samba
     if command -v tailscale >/dev/null 2>&1; then
         log "tailscale ya esta instalado."
     else
@@ -241,7 +245,7 @@ cmd_install() {
             exit 1
         }
         log "instalando tailscale (instalador oficial, idempotente)..."
-        curl -fsSL "$TS_INSTALL_URL" | sudo sh
+        curl -fsSL "$TS_INSTALL_URL" | sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l sh
     fi
     ensure_user_group
     apply_share_perms
@@ -251,7 +255,10 @@ cmd_install() {
     log "tailscaled habilitado y arrancado."
     tailscale_login
     firewall_apply
-    sudo systemctl enable --now smbd
+    # enable + restart: smbd may already be running with the previous
+    # smb.conf, and 'enable --now' would NOT rebind it to tailscale0.
+    sudo systemctl enable smbd
+    sudo systemctl restart smbd
     log "smbd habilitado y arrancado."
     set_smb_password
     write_receipt
@@ -261,7 +268,7 @@ cmd_install() {
 cmd_update() {
     require_sudo
     log "actualizando samba..."
-    sudo apt-get install --only-upgrade -y samba
+    sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install --only-upgrade -y samba
     if sudo tailscale update --help >/dev/null 2>&1; then
         sudo tailscale update
         log "tailscale actualizado."
