@@ -135,6 +135,11 @@ firewall_apply() {
     # recreates the table on every re-apply, and a reboot loads it fresh.
     sudo mkdir -p "$(dirname "$SMBD_DROPIN")"
     sudo tee "$SMBD_DROPIN" >/dev/null <<EOF
+[Unit]
+# The baseline table must exist before smbd re-adds its rule: nftables
+# and smbd both start at boot and nothing orders them by default.
+After=nftables.service
+
 [Service]
 ExecStartPre=-/bin/sh -c 'nft list chain inet ${NFT_TABLE} input 2>/dev/null | grep -q "dport 445" || nft -f ${NFT_EXT_FILE}'
 EOF
