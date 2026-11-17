@@ -43,6 +43,23 @@ tabla, y `smbd` las re-agrega en cada arranque (drop-in
 alcanzable despues de un reboot o de un re-apply del firewall, y **solo**
 por el tailnet.
 
+### Por que no `interfaces = tailscale0`
+
+Samba **no puede hacer bind a `tailscale0`**: su enumeracion de interfaces
+descarta las point-to-point, y con `bind interfaces only = yes` el daemon
+queda sin socket y muere con `open_sockets_smbd() failed`. Por eso la
+restriccion se aplica en la capa de cliente del propio SMB:
+
+```
+hosts allow = 100.64.0.0/10     # rango CGNAT de Tailscale
+hosts deny  = ALL
+```
+
+Un cliente fuera del tailnet es rechazado por Samba (`hosts deny`); uno
+dentro, pasa y ve el share. Encima de eso, el firewall descarta el 445 que
+no venga por `tailscale0`. Dos capas, y ninguna depende de que Samba
+resuelva el nombre de la interfaz.
+
 ## Segunda capa: ACL de Tailscale
 
 El tailnet es la primera capa (que dispositivos llegan al puerto). La
