@@ -43,6 +43,35 @@ tabla, y `smbd` las re-agrega en cada arranque (drop-in
 alcanzable despues de un reboot o de un re-apply del firewall, y **solo**
 por el tailnet.
 
+## Segunda capa: ACL de Tailscale
+
+El tailnet es la primera capa (que dispositivos llegan al puerto). La
+segunda es la credencial SMB. Si querés que el puerto 445 solo se alcance
+desde ciertos dispositivos, se define en la consola de Tailscale
+(Settings > Access Controls), no en este repo.
+
+Ojo: un tailnet **sin** archivo de politica permite todo. En el momento
+en que agregas el archivo, pasás a deny-by-default: lo que no este
+concedido, no pasa. Para este VPS el minimo que hay que conceded (ssh para
+el arranque de mosh, el rango UDP de mosh y el puerto SMB) es:
+
+```json
+{
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:member"],
+      "ip": ["tcp:22", "udp:60000-60010", "tcp:445"]
+    }
+  ]
+}
+```
+
+Para que el 445 lo alcance solo el iPhone (y no cualquier device del tailnet),
+se etiqueta el iPhone (`tag:iphone`) y el grant usa `src: ["tag:iphone"]`.
+Un device etiquetado pierde la identidad de usuario para SSH, lo cual es
+irrelevante aca porque el share va por SMB.
+
 ## Conectar
 
 Necesitas la IP del VPS en el tailnet (empieza por `100.`): `tailscale ip -4`
