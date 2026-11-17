@@ -26,6 +26,23 @@ Durante la instalacion:
 - Si el VPS no estaba en tu tailnet, `tailscale up` muestra una URL de
   autenticacion: abrela, autoriza la maquina y vuelve a la terminal.
 
+## Firewall
+
+`prim` administra el baseline del host (tabla `vps_hardening`, default-deny:
+22 ssh, mosh UDP 60000-60010 por `tailscale0`). El puerto SMB es de esta
+pila, no del baseline, asi que vive en la extension del baseline:
+
+```
+/etc/nftables.d/prim-ext/files.nft
+    insert rule inet vps_hardening input iifname "tailscale0" tcp dport 445 accept
+```
+
+`rig/vps/harden-vps.sh` re-aplica esas extensiones despues de recrear la
+tabla, y `smbd` las re-agrega en cada arranque (drop-in
+`/etc/systemd/system/smbd.service.d/`). Resultado: el share sigue
+alcanzable despues de un reboot o de un re-apply del firewall, y **solo**
+por el tailnet.
+
 ## Conectar
 
 Necesitas la IP del VPS en el tailnet (empieza por `100.`): `tailscale ip -4`

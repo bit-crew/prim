@@ -40,6 +40,16 @@ CONF_MARKER="prim:files"
 RECEIPT="${HOME}/.local/share/prim/files.receipt.json"
 TS_INSTALL_URL="https://tailscale.com/install.sh"
 
+# Firewall: prim owns the host baseline (rig/vps/harden-vps.sh, table
+# vps_hardening, default-deny). The SMB port belongs to THIS stack, so it
+# lives in the baseline's extension dir: harden-vps.sh re-applies these
+# fragments after every re-apply, and smbd re-adds the rule on every start.
+NFT_TABLE="vps_hardening"
+NFT_EXT_DIR="/etc/nftables.d/prim-ext"
+NFT_EXT_FILE="${NFT_EXT_DIR}/files.nft"
+SMB_FIREWALL_RULE='insert rule inet vps_hardening input iifname "tailscale0" tcp dport 445 accept'
+SMBD_DROPIN="/etc/systemd/system/smbd.service.d/10-prim-files-firewall.conf"
+
 require_sudo() {
     if ! sudo -n true 2>/dev/null; then
         err "este componente necesita sudo con credencial cacheada."
@@ -110,6 +120,35 @@ write_smb_conf() {
     fi
     smb_conf_body | sudo tee "$SMB_CONF" >/dev/null
     log "smb.conf minimo escrito: escucha solo en tailscale0."
+}
+
+firewall_apply() {
+    sudo mkdir -p "$NFT_EXT_DIR"
+    printf '%s\n' "$SMB_FIREWALL_RULE" | sudo tee "$NFT_EXT_FILE" >/dev/null
+    if sudo nft list chain inet "$NFT_TABLE" input 2>/dev/null | grep -q 'dport 445'; then
+        log "firewall: tcp 445 (smb) ya permitido en ${NFT_TABLE}."
+    else
+        sudo nft -f "$NFT_EXT_FILE" &&
+            log "firewall: tcp 445 (smb) permitido solo por tailscale0."
+    fi
+    # smbd re-adds the rule before it starts: the baseline deletes and
+    # recreates the table on every re-apply, and a reboot loads it fresh.
+    sudo mkdir -p "$(dirname "$SMBD_DROPIN")"
+    sudo tee "$SMBD_DROPIN" >/dev/null <<EOF
+[Service]
+ExecStartPre=-/bin/sh -c 'nft list chain inet ${NFT_TABLE} input 2>/dev/null | grep -q "dport 445" || nft -f ${NFT_EXT_FILE}'
+EOF
+    sudo systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+firewall_remove() {
+    sudo rm -f "$NFT_EXT_FILE" "$SMBD_DROPIN"
+    sudo systemctl daemon-reload >/dev/null 2>&1 || true
+    for handle in $(sudo nft -a list chain inet "$NFT_TABLE" input 2>/dev/null |
+        grep 'dport 445' | awk '{print $NF}'); do
+        sudo nft delete rule inet "$NFT_TABLE" input handle "$handle" >/dev/null 2>&1 || true
+    done
+    log "firewall: tcp 445 (smb) retirado de ${NFT_TABLE}."
 }
 
 mask_nmbd() {
@@ -206,6 +245,7 @@ cmd_install() {
     sudo systemctl enable --now tailscaled
     log "tailscaled habilitado y arrancado."
     tailscale_login
+    firewall_apply
     sudo systemctl enable --now smbd
     log "smbd habilitado y arrancado."
     set_smb_password
@@ -227,6 +267,7 @@ cmd_update() {
     apply_share_perms
     write_smb_conf
     mask_nmbd
+    firewall_apply
     sudo systemctl restart smbd
     log "smbd reiniciado."
     write_receipt
@@ -263,6 +304,7 @@ cmd_uninstall() {
     require_sudo
     sudo systemctl disable --now smbd >/dev/null 2>&1 || true
     log "smbd detenido y deshabilitado."
+    firewall_remove
     restore_smb_conf
     sudo smbpasswd -x "$SMB_USER" >/dev/null 2>&1 || true
     if id "$SMB_USER" >/dev/null 2>&1; then

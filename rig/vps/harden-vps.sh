@@ -11,6 +11,9 @@
 #      dropped. Service-specific ports are owned by their stacks: e.g. gt's
 #      WorkSpaces web client opens its own tcp 8443 allow inside this table
 #      (its activate.sh + unit re-add it after every re-apply/reboot).
+#      Application-owned ports live in /etc/nftables.d/prim-ext/*.nft (one
+#      file per stack, e.g. files' SMB 445): plain nft statements applied
+#      AFTER the baseline, so an app rule survives every re-apply.
 #      Docker's own tables are NOT flushed.
 #
 # Usage (root):
@@ -24,6 +27,7 @@ SWAP_FILE=/swapfile
 SWAP_SIZE_MB=2048
 NFT_TABLE=vps_hardening
 NFT_RULES_FILE=/etc/nftables.d/${NFT_TABLE}.nft
+NFT_EXT_DIR=/etc/nftables.d/prim-ext
 REVERT_UNIT=vps-hardening-revert.timer
 ALLOW_TCP_PORTS="22"
 MOSH_IFACE="tailscale0"
@@ -87,6 +91,17 @@ ensure_firewall() {
     nft delete table inet "${NFT_TABLE}" 2>/dev/null || true
     nft -f "${NFT_RULES_FILE}"
     say "firewall: table ${NFT_TABLE} applied (lo/established/icmp + tcp ${ALLOW_TCP_PORTS} + mosh udp ${MOSH_UDP_RANGE} via ${MOSH_IFACE})"
+
+    # Application-owned rules (one file per stack). The table was just
+    # recreated, so the app rules have to be re-applied along with it.
+    for frag in "${NFT_EXT_DIR}"/*.nft; do
+        [ -e "$frag" ] || continue
+        if nft -f "$frag"; then
+            say "firewall: applied $(basename "$frag") (app rule)"
+        else
+            say "firewall: could not apply $(basename "$frag")"
+        fi
+    done
 }
 
 schedule_revert() {
@@ -100,7 +115,9 @@ schedule_revert() {
 
 case "${1:-}" in
     --confirm)
-        systemctl stop "${REVERT_UNIT}" 2>/dev/null && say "revert timer cancelled" || true
+        if systemctl stop "${REVERT_UNIT}" 2>/dev/null; then
+            say "revert timer cancelled"
+        fi
         ensure_swap
         ensure_firewall
         say "confirmed: state is persistent across reboots"
