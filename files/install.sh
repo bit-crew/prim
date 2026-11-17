@@ -128,7 +128,7 @@ write_smb_conf() {
         fi
     fi
     smb_conf_body | sudo tee "$SMB_CONF" >/dev/null
-    log "smb.conf minimo escrito: escucha solo en tailscale0."
+    log "smb.conf minimo escrito: solo clientes del tailnet (100.64.0.0/10)."
 }
 
 firewall_apply() {
