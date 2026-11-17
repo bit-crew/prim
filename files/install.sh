@@ -190,18 +190,28 @@ set_smb_password() {
     # args or env (S11). On a re-run the existing password is KEPT: pdbedit
     # listing the user means a password is already set, so the chained
     # install (rig vps) never resets it and repairs stay TTY-free.
+    #
+    # Without a TTY the component does NOT abort: the share, the firewall
+    # rule and the permissions are already in place, and the only thing
+    # missing is the credential. The install finishes and says what is
+    # left, instead of leaving the component half-installed with no
+    # receipt at all.
     if sudo pdbedit -L -u "$SMB_USER" >/dev/null 2>&1; then
         log "clave SMB de '$SMB_USER' ya definida; se conserva."
+        SMB_PASSWORD_SET=true
         return 0
     fi
     if [ -t 0 ]; then
         log "define la clave SMB para '$SMB_USER' (se pide dos veces)."
         sudo smbpasswd -a "$SMB_USER"
         log "clave SMB fijada para '$SMB_USER'."
+        SMB_PASSWORD_SET=true
     else
-        err "sin TTY no se puede fijar la clave SMB de '$SMB_USER'."
-        err "re-ejecuta interactivo: prim install files"
-        exit 1
+        err "sin TTY no se puede definir la clave SMB de '$SMB_USER'."
+        err "el share queda ARMADO pero sin credencial: defini la clave con"
+        err "  sudo smbpasswd '$SMB_USER'"
+        err "y despues 'prim install files' para cerrar el componente."
+        SMB_PASSWORD_SET=false
     fi
 }
 
@@ -220,6 +230,7 @@ write_receipt() {
         printf '"share_path": "%s",\n' "$WORK_DIR"
         printf '"share_user": "%s",\n' "$SMB_USER"
         printf '"interface": "tailscale0",\n'
+        printf '"smb_password_set": "%s",\n' "${SMB_PASSWORD_SET:-false}"
         printf '"services": "smbd tailscaled"\n'
         printf '}\n'
     } > "$RECEIPT"
@@ -234,6 +245,10 @@ summary() {
     else
         err "no se pudo leer la IP de tailscale; tras 'sudo tailscale up' conecta con:"
         err "iPhone: Archivos > Conectar al servidor > smb://<IP-TAILSCALE>/work"
+    fi
+    if [ "${SMB_PASSWORD_SET:-false}" = "false" ]; then
+        log "PENDIENTE: la clave SMB de '$SMB_USER' todavia no esta definida."
+        log "  sudo smbpasswd '$SMB_USER'   (despues, 'prim install files' lo cierra)"
     fi
 }
 
