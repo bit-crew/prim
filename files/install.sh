@@ -88,6 +88,15 @@ apply_share_perms() {
 
 smb_conf_body() {
     # Minimal S10 config: no printing, no nmbd dependencies, tailnet-only.
+    #
+    # Samba CANNOT bind to tailscale0: its interface enumeration skips
+    # point-to-point interfaces, so both "interfaces = tailscale0" and
+    # "interfaces = <ip>" leave smbd with no socket to bind and it dies
+    # with "open_sockets_smbd() failed". The tailnet restriction is
+    # therefore enforced one layer up, on the client address: only the
+    # Tailscale CGNAT range (100.64.0.0/10) is allowed, everything else
+    # is denied. The nftables rule (445 only from tailscale0) is the
+    # layer below that one.
     cat <<EOF
 # $CONF_MARKER — generado por prim (componente files); no editar a mano.
 [global]
@@ -96,8 +105,8 @@ smb_conf_body() {
     load printers = no
     disable spoolss = yes
     log level = 1
-    interfaces = tailscale0
-    bind interfaces only = yes
+    hosts allow = 100.64.0.0/10
+    hosts deny = ALL
 
 [work]
     path = $WORK_DIR
