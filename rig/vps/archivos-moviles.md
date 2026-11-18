@@ -108,6 +108,22 @@ Escribes con normalidad y los archivos caen en `~/work` del VPS con grupo
 `primfiles` (archivos 0664, directorios 0775): tu usuario y `filesmb`
 comparten lectura y escritura.
 
+### El home tiene que ser atravesable
+
+`filesmb` autentica contra Samba, asi que el kernel le exige poder
+**atravesar** `/home/<usuario>` para llegar a `~/work`. Con un home en
+`0700` el share se ve pero no se puede usar: el listado de shares
+funciona y `put`/`get`/`ls` fallan con `NT_STATUS_ACCESS_DENIED`, aunque
+los permisos de grupo de `~/work` sean correctos.
+
+El instalador lo resuelve solo (traversal, nunca listado):
+
+- con `setfacl` disponible: `setfacl -m g:primfiles:--x /home/<usuario>`
+- si no: `chmod o+x /home/<usuario>` (0711)
+
+El home sigue sin poder listarse: solo se puede alcanzar por una ruta
+conocida.
+
 ## Clave SMB
 
 **No hay paso manual.** El instalador la genera sola: 48 caracteres

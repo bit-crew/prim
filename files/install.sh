@@ -87,6 +87,29 @@ apply_share_perms() {
     sudo find "$WORK_DIR" -type d -exec chgrp "$GROUP" {} +
     sudo find "$WORK_DIR" -type d -exec chmod g+rwxs {} +
     log "permisos: directorios de $WORK_DIR en grupo $GROUP con setgid."
+    ensure_home_traversable
+}
+
+ensure_home_traversable() {
+    # The share lives INSIDE the user's home. Samba authenticates as
+    # filesmb, and that account must be able to TRAVERSE the home to
+    # reach ~/work at all: with a 0700 home every file operation fails
+    # with NT_STATUS_ACCESS_DENIED even when ~/work's group rights are
+    # perfect (verified: listing the share worked, put/get/ls did not).
+    #
+    # The fix is traversal only (o+x): the home stays unlistable, only
+    # reachable by a known path. Preferred form is an ACL (g:primfiles:--x)
+    # when the filesystem supports it; the mode change is the fallback.
+    if sudo -u "$SMB_USER" test -x "$HOME" 2>/dev/null; then
+        log "home atravessable por '$SMB_USER' (ya estaba bien)."
+        return 0
+    fi
+    if command -v setfacl >/dev/null 2>&1 && sudo setfacl -m "g:$GROUP:--x" "$HOME" 2>/dev/null; then
+        log "home con ACL de traversing para el grupo $GROUP (traversal, no listado)."
+    else
+        sudo chmod o+x "$HOME"
+        log "home con permiso de traversing (o+x) para que el share sea alcanzable."
+    fi
 }
 
 smb_conf_body() {
