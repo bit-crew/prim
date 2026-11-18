@@ -132,6 +132,11 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+            files::FilesCmd::Set => {
+                if !files::set_password() {
+                    std::process::exit(1);
+                }
+            }
         },
         Some("status") => {
             if args.len() != 1 {

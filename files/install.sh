@@ -308,6 +308,7 @@ cmd_rotate_password() {
     write_receipt
 }
 
+
 cmd_install() {
     require_sudo
     log "instalando samba (apt)..."
@@ -418,7 +419,7 @@ case "${1:-install}" in
     uninstall) cmd_uninstall ;;
     rotate-password) cmd_rotate_password ;;
     *)
-        err "uso: files/install.sh [install|update|uninstall|rotate-password] (por defecto: install)"
+        err "uso: files/install.sh [install|update|uninstall|rotate-password|set-password <archivo>] (por defecto: install)"
         exit 2
         ;;
 esac

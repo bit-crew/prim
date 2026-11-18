@@ -38,29 +38,35 @@ pub fn read_password() -> Option<String> {
     read_password_from(&credential_path())
 }
 
-/// `prim files password [--rotate]`.
+/// `prim files password [--rotate|--set]`.
 #[derive(Debug, PartialEq)]
 pub enum FilesCmd {
     /// Print the stored SMB password.
     Password,
     /// Generate a new one through the component.
     Rotate,
+    /// Set a password the user chooses.
+    Set,
 }
 
 /// Parse the `files` subcommand. None on bad usage.
 pub fn parse_args(args: &[String]) -> FilesCmd {
     let mut rotate = false;
+    let mut set = false;
     for a in args {
         match a.as_str() {
             "password" => {}
             "--rotate" => rotate = true,
+            "--set" => set = true,
             other => {
-                eprintln!("[prim] uso: prim files password [--rotate] (recibido: {other})");
+                eprintln!("[prim] uso: prim files password [--rotate|--set] (recibido: {other})");
                 std::process::exit(2);
             }
         }
     }
-    if rotate {
+    if set {
+        FilesCmd::Set
+    } else if rotate {
         FilesCmd::Rotate
     } else {
         FilesCmd::Password
@@ -99,6 +105,156 @@ pub fn rotate_password() -> bool {
     crate::run_component("files/install.sh", &["rotate-password"])
 }
 
+/// `prim files password --set` — the user CHOOSES the password. It is
+/// read from the terminal without echo (or from stdin when piped) and
+/// applied straight from prim: prim owns its state dir and calls
+/// smbpasswd. The secret never travels in argv, env or the receipt.
+pub fn set_password() -> bool {
+    let user = share_user();
+    let first = match read_secret(&format!("Nueva clave SMB para {user}: ")) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[prim] no se pudo leer la clave: {e}");
+            return false;
+        }
+    };
+    let second = match read_secret("Repeti la clave: ") {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[prim] no se pudo leer la confirmacion: {e}");
+            return false;
+        }
+    };
+    if first != second {
+        eprintln!("[prim] las claves no coinciden; no se cambio nada.");
+        return false;
+    }
+    if first.chars().count() < 12 {
+        eprintln!("[prim] la clave es demasiado corta (minimo 12 caracteres).");
+        return false;
+    }
+    match apply_password(&user, &first) {
+        Ok(true) => {
+            if let Err(e) = store_password(&first) {
+                eprintln!("[prim] la clave se aplico pero no se pudo guardar: {e}");
+            }
+            println!("[prim] clave SMB de {user} actualizada.");
+            true
+        }
+        Ok(false) => {
+            eprintln!("[prim] smbpasswd fallo; la clave no quedo aplicada.");
+            false
+        }
+        Err(e) => {
+            eprintln!("[prim] no se pudo aplicar la clave: {e}");
+            false
+        }
+    }
+}
+
+/// The SMB login recorded by the component (the user may replace it).
+fn share_user() -> String {
+    let path = std::env::var("HOME")
+        .map(|h| format!("{h}/.local/share/prim/files.receipt.json"))
+        .unwrap_or_default();
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| {
+            t.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("\"share_user\": \"")
+                    .and_then(|v| v.strip_suffix("\","))
+                    .map(|v| v.to_string())
+            })
+        })
+        .unwrap_or_else(|| "filesmb".to_string())
+}
+
+/// Apply the password to the Samba passdb. The secret goes through
+/// stdin only, never as an argument.
+fn apply_password(user: &str, password: &str) -> std::io::Result<bool> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("sudo")
+        .arg("smbpasswd")
+        .arg("-a")
+        .arg("-s")
+        .arg(user)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("no stdin"))?;
+        writeln!(stdin, "{password}")?;
+        writeln!(stdin, "{password}")?;
+    }
+    Ok(child.wait()?.success())
+}
+
+/// Store the credential in prim's private state (owner only).
+fn store_password(password: &str) -> std::io::Result<()> {
+    let dir = std::env::var("HOME")
+        .map(|h| format!("{h}/.local/state/prim/files"))
+        .unwrap_or_default();
+    std::fs::create_dir_all(&dir)?;
+    let path = std::path::Path::new(&dir).join("smb-password");
+    std::fs::write(&path, format!("{password}\n"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+/// Read a secret from the terminal with echo off. Falls back to stdin
+/// (two lines) when there is no terminal, so it also works piped.
+fn read_secret(prompt: &str) -> std::io::Result<String> {
+    use std::io::{BufRead, BufReader, Write};
+    let tty = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/tty");
+    match tty {
+        Ok(tty) => {
+            print!("{prompt}");
+            std::io::stdout().flush().ok();
+            // stty -echo on the terminal, restored right after the read.
+            let _ = std::process::Command::new("stty")
+                .arg("-echo")
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            let mut line = String::new();
+            let n = BufReader::new(&tty).read_line(&mut line)?;
+            let _ = std::process::Command::new("stty")
+                .arg("echo")
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            println!();
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "entrada vacia",
+                ));
+            }
+            Ok(line.trim().to_string())
+        }
+        Err(_) => {
+            let mut line = String::new();
+            std::io::stdin().lock().read_line(&mut line)?;
+            Ok(line.trim().to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +291,23 @@ mod tests {
         std::fs::write(&f, "   \n").unwrap();
         assert_eq!(read_password_from(&f), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_flag_selects_the_set_command() {
+        let args = vec!["password".to_string(), "--set".to_string()];
+        assert_eq!(parse_args(&args), FilesCmd::Set);
+    }
+
+    #[test]
+    fn rotate_flag_selects_the_rotate_command() {
+        let args = vec!["password".to_string(), "--rotate".to_string()];
+        assert_eq!(parse_args(&args), FilesCmd::Rotate);
+    }
+
+    #[test]
+    fn no_flag_prints_the_password() {
+        let args = vec!["password".to_string()];
+        assert_eq!(parse_args(&args), FilesCmd::Password);
     }
 }
