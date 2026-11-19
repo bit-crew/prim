@@ -124,12 +124,30 @@ El instalador lo resuelve solo (traversal, nunca listado):
 El home sigue sin poder listarse: solo se puede alcanzar por una ruta
 conocida.
 
+El ACL es la forma preferida porque da el traversal **solo** al grupo
+del share. El `o+x` alcanza a **todo** usuario local del VPS, asi que
+solo se mantiene mientras el ACL no este disponible o no de prueba de
+dar traversal a `filesmb`; en cuanto el ACL funciona, el instalador
+retira el bit de world-execute del home.
+
 ## Clave SMB
 
-**No hay paso manual.** El instalador la genera sola: 48 caracteres
-aleatorios (192 bits) del CSPRNG del kernel, la aplica con
-`smbpasswd -a -s` (sin TTY, sin prompt) y la guarda en
-`~/.local/state/prim/files/smb-password` con permiso `600`.
+Hay dos caminos, y los dos son automaticos:
+
+**Elegir tu propia clave** (lo que pediste):
+
+```
+prim files password --set
+```
+
+Te la pregunta dos veces en el terminal (sin eco, ni en argumentos, ni
+en el receipt), la aplica con `smbpasswd -a -s` y la guarda en
+`~/.local/state/prim/files/smb-password` con permiso `600`. Minimo 12
+caracteres; `--rotate` y `--set` no se pueden combinar.
+
+**Generarla sola** (lo que hace el instalador): 48 caracteres aleatorios
+(192 bits) del CSPRNG del kernel, aplicada con `smbpasswd -a -s` (sin
+TTY, sin prompt) y guardada en el mismo archivo con permiso `600`.
 
 - El secreto **nunca** viaja en argumentos, ni en variables de entorno, ni
   en el receipt: queda en un solo archivo, legible solo por tu usuario.

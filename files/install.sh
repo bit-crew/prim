@@ -97,18 +97,27 @@ ensure_home_traversable() {
     # with NT_STATUS_ACCESS_DENIED even when ~/work's group rights are
     # perfect (verified: listing the share worked, put/get/ls did not).
     #
-    # The fix is traversal only (o+x): the home stays unlistable, only
+    # The fix is traversal only (x): the home stays unlistable, only
     # reachable by a known path. Preferred form is an ACL (g:primfiles:--x)
-    # when the filesystem supports it; the mode change is the fallback.
+    # because it grants traversal to the share group alone; the mode
+    # change (o+x) reaches EVERY local account, so it is only kept while
+    # the ACL path is unavailable or unproven.
     if sudo -u "$SMB_USER" test -x "$HOME" 2>/dev/null; then
         log "home atravessable por '$SMB_USER' (ya estaba bien)."
         return 0
     fi
     if command -v setfacl >/dev/null 2>&1 && sudo setfacl -m "g:$GROUP:--x" "$HOME" 2>/dev/null; then
-        log "home con ACL de traversing para el grupo $GROUP (traversal, no listado)."
-    else
-        sudo chmod o+x "$HOME"
-        log "home con permiso de traversing (o+x) para que el share sea alcanzable."
+        # Only drop the world-execute bit once the ACL is proven to give
+        # filesmb the traversal: a silent ACL failure must not lock the
+        # share out again.
+        if sudo -u "$SMB_USER" test -x "$HOME" 2>/dev/null; then
+            sudo chmod o-x "$HOME" 2>/dev/null || true
+            log "home con ACL de traversing para el grupo $GROUP (traversal, no listado)."
+        else
+            sudo chmod o+x "$HOME"
+            log "home con permiso de traversing (o+x): el ACL no dio traversal a $SMB_USER."
+        fi
+        return 0
     fi
 }
 
@@ -317,7 +326,7 @@ cmd_install() {
     # block on a debconf dialog (needrestart pops one for the kernel and
     # another asking which daemons to restart, and restarting sshd there
     # kills the very session running the install).
-    sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y samba
+    sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y samba acl
     if command -v tailscale >/dev/null 2>&1; then
         log "tailscale ya esta instalado."
     else
@@ -419,7 +428,8 @@ case "${1:-install}" in
     uninstall) cmd_uninstall ;;
     rotate-password) cmd_rotate_password ;;
     *)
-        err "uso: files/install.sh [install|update|uninstall|rotate-password|set-password <archivo>] (por defecto: install)"
+        err "uso: files/install.sh [install|update|uninstall|rotate-password] (por defecto: install)"
+        err "para fijar tu propia clave: prim files password --set"
         exit 2
         ;;
 esac

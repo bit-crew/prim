@@ -39,7 +39,7 @@ pub fn read_password() -> Option<String> {
 }
 
 /// `prim files password [--rotate|--set]`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FilesCmd {
     /// Print the stored SMB password.
     Password,
@@ -49,8 +49,24 @@ pub enum FilesCmd {
     Set,
 }
 
+/// The shortest secret prim accepts from the user.
+const MIN_SECRET_LEN: usize = 12;
+
 /// Parse the `files` subcommand. None on bad usage.
 pub fn parse_args(args: &[String]) -> FilesCmd {
+    match parse_files_cmd(args) {
+        Ok(cmd) => cmd,
+        Err(msg) => {
+            eprintln!("{msg}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Parse the flags of `prim files password`. Err carries the usage
+/// message; the two flags are exclusive and a rejected combination is
+/// an error, never a silently resolved precedence.
+fn parse_files_cmd(args: &[String]) -> Result<FilesCmd, String> {
     let mut rotate = false;
     let mut set = false;
     for a in args {
@@ -59,18 +75,25 @@ pub fn parse_args(args: &[String]) -> FilesCmd {
             "--rotate" => rotate = true,
             "--set" => set = true,
             other => {
-                eprintln!("[prim] uso: prim files password [--rotate|--set] (recibido: {other})");
-                std::process::exit(2);
+                return Err(format!(
+                    "[prim] uso: prim files password [--rotate|--set] (recibido: {other})"
+                ));
             }
         }
     }
-    if set {
+    if set && rotate {
+        return Err(
+            "[prim] uso: prim files password [--rotate|--set] (--rotate y --set no se combinan)"
+                .to_string(),
+        );
+    }
+    Ok(if set {
         FilesCmd::Set
     } else if rotate {
         FilesCmd::Rotate
     } else {
         FilesCmd::Password
-    }
+    })
 }
 
 /// `prim files password` — print the stored credential so it can be
@@ -110,7 +133,13 @@ pub fn rotate_password() -> bool {
 /// applied straight from prim: prim owns its state dir and calls
 /// smbpasswd. The secret never travels in argv, env or the receipt.
 pub fn set_password() -> bool {
-    let user = share_user();
+    let user = match share_user() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[prim] {e}");
+            return false;
+        }
+    };
     let first = match read_secret(&format!("Nueva clave SMB para {user}: ")) {
         Ok(v) => v,
         Err(e) => {
@@ -125,25 +154,24 @@ pub fn set_password() -> bool {
             return false;
         }
     };
-    if first != second {
-        eprintln!("[prim] las claves no coinciden; no se cambio nada.");
-        return false;
-    }
-    if first.chars().count() < 12 {
-        eprintln!("[prim] la clave es demasiado corta (minimo 12 caracteres).");
-        return false;
-    }
-    match apply_password(&user, &first) {
-        Ok(true) => {
-            if let Err(e) = store_password(&first) {
+    let secret = match validate_secret(&first, &second) {
+        Ok(s) => s,
+        Err(m) => {
+            eprintln!("[prim] {m}");
+            return false;
+        }
+    };
+    match apply_password(&user, &secret) {
+        Ok(()) => {
+            if let Err(e) = store_password(&secret) {
+                // The passdb holds the new secret but the local copy does
+                // not: `prim files password` would print a stale one, so
+                // the command fails instead of claiming success.
                 eprintln!("[prim] la clave se aplico pero no se pudo guardar: {e}");
+                return false;
             }
             println!("[prim] clave SMB de {user} actualizada.");
             true
-        }
-        Ok(false) => {
-            eprintln!("[prim] smbpasswd fallo; la clave no quedo aplicada.");
-            false
         }
         Err(e) => {
             eprintln!("[prim] no se pudo aplicar la clave: {e}");
@@ -152,27 +180,47 @@ pub fn set_password() -> bool {
     }
 }
 
+/// Validate the two entries of a user-chosen secret. Ok carries the
+/// secret to apply; Err carries the message to show.
+fn validate_secret(first: &str, second: &str) -> Result<String, String> {
+    if first != second {
+        return Err("las claves no coinciden; no se cambio nada.".to_string());
+    }
+    if first.chars().count() < MIN_SECRET_LEN {
+        return Err(format!(
+            "la clave es demasiado corta (minimo {MIN_SECRET_LEN} caracteres)."
+        ));
+    }
+    Ok(first.to_string())
+}
+
 /// The SMB login recorded by the component (the user may replace it).
-fn share_user() -> String {
+/// The receipt is the only source of truth: a missing or unreadable
+/// field is an error, never a silent default, because the password
+/// would be applied to the wrong Samba account.
+fn share_user() -> Result<String, String> {
     let path = std::env::var("HOME")
         .map(|h| format!("{h}/.local/share/prim/files.receipt.json"))
         .unwrap_or_default();
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|t| {
-            t.lines().find_map(|l| {
-                l.trim()
-                    .strip_prefix("\"share_user\": \"")
-                    .and_then(|v| v.strip_suffix("\","))
-                    .map(|v| v.to_string())
-            })
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("no se pudo leer el receipt del componente files: {e}"))?;
+    text.lines()
+        .find_map(|l| {
+            let rest = l.trim().strip_prefix("\"share_user\"")?;
+            let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+            let value = rest.strip_prefix('"')?;
+            Some(value.split('"').next().unwrap_or("").to_string())
         })
-        .unwrap_or_else(|| "filesmb".to_string())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            "el receipt del componente files no declara share_user; repara con: prim install files"
+                .to_string()
+        })
 }
 
 /// Apply the password to the Samba passdb. The secret goes through
 /// stdin only, never as an argument.
-fn apply_password(user: &str, password: &str) -> std::io::Result<bool> {
+fn apply_password(user: &str, password: &str) -> std::io::Result<()> {
     use std::io::Write;
     use std::process::{Command, Stdio};
     let mut child = Command::new("sudo")
@@ -182,26 +230,36 @@ fn apply_password(user: &str, password: &str) -> std::io::Result<bool> {
         .arg(user)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()?;
     {
-        let stdin = child
+        let mut stdin = child
             .stdin
-            .as_mut()
+            .take()
             .ok_or_else(|| std::io::Error::other("no stdin"))?;
         writeln!(stdin, "{password}")?;
         writeln!(stdin, "{password}")?;
     }
-    Ok(child.wait()?.success())
+    let out = child.wait_with_output()?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(std::io::Error::other(if msg.is_empty() {
+            "smbpasswd fallo".to_string()
+        } else {
+            msg
+        }))
+    }
 }
 
 /// Store the credential in prim's private state (owner only).
 fn store_password(password: &str) -> std::io::Result<()> {
-    let dir = std::env::var("HOME")
-        .map(|h| format!("{h}/.local/state/prim/files"))
-        .unwrap_or_default();
-    std::fs::create_dir_all(&dir)?;
-    let path = std::path::Path::new(&dir).join("smb-password");
+    let path = credential_path();
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("ruta de credencial invalida"))?;
+    std::fs::create_dir_all(dir)?;
     std::fs::write(&path, format!("{password}\n"))?;
     #[cfg(unix)]
     {
@@ -223,21 +281,15 @@ fn read_secret(prompt: &str) -> std::io::Result<String> {
         Ok(tty) => {
             print!("{prompt}");
             std::io::stdout().flush().ok();
-            // stty -echo on the terminal, restored right after the read.
-            let _ = std::process::Command::new("stty")
-                .arg("-echo")
-                .stdin(std::process::Stdio::inherit())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
+            // stty reads the terminal attributes from its STDIN, so it
+            // must get the tty itself: with an inherited (piped) stdin
+            // the echo would stay on and the secret would be shown.
+            set_echo(&tty, false);
             let mut line = String::new();
-            let n = BufReader::new(&tty).read_line(&mut line)?;
-            let _ = std::process::Command::new("stty")
-                .arg("echo")
-                .stdin(std::process::Stdio::inherit())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
+            let read = BufReader::new(&tty).read_line(&mut line);
+            // Restore the echo on every path, including the error one.
+            set_echo(&tty, true);
+            let n = read?;
             println!();
             if n == 0 {
                 return Err(std::io::Error::new(
@@ -249,10 +301,29 @@ fn read_secret(prompt: &str) -> std::io::Result<String> {
         }
         Err(_) => {
             let mut line = String::new();
-            std::io::stdin().lock().read_line(&mut line)?;
+            let n = std::io::stdin().lock().read_line(&mut line)?;
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "entrada vacia",
+                ));
+            }
             Ok(line.trim().to_string())
         }
     }
+}
+
+/// Turn the terminal echo on or off. The tty handle is stty's stdin:
+/// stty acts on the terminal it reads from.
+fn set_echo(tty: &std::fs::File, on: bool) {
+    let arg = if on { "echo" } else { "-echo" };
+    let Ok(fd) = tty.try_clone() else { return };
+    let _ = std::process::Command::new("stty")
+        .arg(arg)
+        .stdin(std::process::Stdio::from(fd))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 }
 
 #[cfg(test)]
@@ -293,21 +364,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn set_flag_selects_the_set_command() {
-        let args = vec!["password".to_string(), "--set".to_string()];
-        assert_eq!(parse_args(&args), FilesCmd::Set);
-    }
+    const PARSE_SCENARIOS: &[(&[&str], Option<FilesCmd>)] = &[
+        (&["password"], Some(FilesCmd::Password)),
+        (&["password", "--rotate"], Some(FilesCmd::Rotate)),
+        (&["password", "--set"], Some(FilesCmd::Set)),
+        // The two flags are exclusive: a rejected combination is an
+        // error, never a silently resolved precedence.
+        (&["password", "--rotate", "--set"], None),
+        (&["password", "--bogus"], None),
+    ];
 
     #[test]
-    fn rotate_flag_selects_the_rotate_command() {
-        let args = vec!["password".to_string(), "--rotate".to_string()];
-        assert_eq!(parse_args(&args), FilesCmd::Rotate);
+    fn parse_files_cmd_follows_the_scenarios() {
+        for (args, expected) in PARSE_SCENARIOS {
+            let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+            assert_eq!(parse_files_cmd(&owned).ok(), expected.clone(), "{args:?}");
+        }
     }
 
+    const SECRET_SCENARIOS: &[(&str, &str, bool)] = &[
+        ("abcdefghijkl", "abcdefghijkl", true),
+        // Mismatched entries.
+        ("abcdefghijkl", "abcdefghijkm", false),
+        // One character below the minimum.
+        ("abcdefghijk", "abcdefghijk", false),
+    ];
+
     #[test]
-    fn no_flag_prints_the_password() {
-        let args = vec!["password".to_string()];
-        assert_eq!(parse_args(&args), FilesCmd::Password);
+    fn validate_secret_follows_the_scenarios() {
+        for (first, second, ok) in SECRET_SCENARIOS {
+            assert_eq!(
+                validate_secret(first, second).is_ok(),
+                *ok,
+                "{first:?}/{second:?}"
+            );
+        }
     }
 }
