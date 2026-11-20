@@ -139,6 +139,12 @@ smb_conf_body() {
     server role = standalone server
     load printers = no
     disable spoolss = yes
+    # iOS 18+ (app Archivos) exige SMB "streams" para la metadata: sin
+    # este modulo el cliente trata el share como SOLO LECTURA y no deja
+    # crear, subir ni mover archivos, aunque el share y el FS permitan
+    # escribir. Verificado: con smbclient (que no usa streams) las
+    # escrituras funcionan sobre el mismo share con la misma credencial.
+    vfs objects = streams_xattr
     log level = 1
     hosts allow = 100.64.0.0/10
     hosts deny = ALL

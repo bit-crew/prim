@@ -108,6 +108,30 @@ Escribes con normalidad y los archivos caen en `~/work` del VPS con grupo
 `primfiles` (archivos 0664, directorios 0775): tu usuario y `filesmb`
 comparten lectura y escritura.
 
+### iOS 18+: si la carpeta aparece pero no te deja subir ni mover
+
+Sintoma: en el iPhone el share aparece y lo podes recorrer, pero crear,
+subir o mover un archivo falla. **No es un problema de permisos ni de la
+clave**: el share y el FS permiten escribir.
+
+Causa: desde iOS 18 la app Archivos usa "streams" de SMB para la metadata.
+Sin `vfs objects = streams_xattr` en `[global]`, Samba responde que esas
+operaciones no estan soportadas y el cliente trata el share como SOLO
+LECTURA. Solo afecta a iOS: `smbclient`, Linux, macOS y Android escriben
+sin problema sobre el mismo share con la misma credencial.
+
+El instalador ya lo trae en la config que genera. Para verificarlo:
+
+    sudo testparm -s | grep -i "vfs objects"
+
+Si no aparece, agregá `vfs objects = streams_xattr` en `[global]` de
+`/etc/samba/smb.conf` y reiniciá:
+
+    sudo systemctl restart smbd
+
+Despues, en el iPhone, **desconecta el servidor en Archivos y volvela a
+conectar**: el cliente cachea el flag de solo lectura por sesion.
+
 ### El home tiene que ser atravesable
 
 `filesmb` autentica contra Samba, asi que el kernel le exige poder
