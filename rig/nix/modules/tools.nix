@@ -1,8 +1,17 @@
 # Global packages (S2): what every machine needs, nothing more.
 #
-# Deliberately NOT here (per-repo flakes later, S3/S6e): toolchains
-# (rust/cargo, node, python, go), infra CLIs (aws, gcloud, terraform, sops,
-# wrangler), java, clangd, codelldb, lazysql.
+# Toolchains (rust/cargo, node, python, go) and infra CLIs (aws, gcloud,
+# terraform, sops, wrangler) live WITH their repo, declared in the repo's
+# own flake.nix (see rig/nix/templates/repo/flake.nix and
+# rig/common/entornos-repo.md). Each repo pins what it builds with, so
+# prim builds with rust, gt with go and knt/ap with python + terraform.
+#
+# The VPS profile ALSO carries the toolchains it hosts, for one reason:
+# activating a repo environment needs direnv (use flake in the repo's
+# .envrc), which is per repo and opt-in. Until a repo opts in, its
+# toolchain has to be reachable from a plain shell — otherwise
+# `cargo build` in prim would break the moment rustup is gone. When a repo
+# gets its .envrc wired, this can go back to being repo-only.
 #
 # Installed via their programs.* modules instead of this list (same profile):
 # helix, lazygit (editor.nix); starship, zoxide, direnv, nix-direnv (zsh.nix);
@@ -46,5 +55,29 @@
     # rig/vps/mosh.md). SSH stays the auth path; mosh adds UDP 60000-60010
     # over tailscale0 only.
     mosh
+
+    # Python packaging for every repo that uses it: `uv` installs the venv
+    # and the deps (`uv venv`, `uv pip install`), `ruff` lints and formats.
+    # Both are small and universal, so they belong in the global profile
+    # instead of a per-repo flake. The heavy uv tools (cxas-scrapi,
+    # google-adk) are NOT here: they are not in nixpkgs, each repo installs
+    # its own with `uv tool install` (see knt/ap's `make setup`).
+    uv
+    ruff
+
+
+    # Viewers for the data that lives here. ~/work is the SMB share, so the
+    # CSVs and the markdown people drop from their phones land on this
+    # host. The tools that read them belong here too: the render happens on
+    # the VPS and the client only receives ANSI over SSH/Mosh, which is
+    # why they work from any device on the tailnet.
+    #   glow    - markdown renderer for the terminal
+    #   miller  - CSV/TSV/JSON processor (mlr), with an interactive browser
+    #   duckdb  - SQL over CSV/Parquet/JSON without importing anything
+    # The DC-1 client installs its own copies (it also gets qsv, which is
+    # not needed here); see rig/client/herramientas.md.
+    glow
+    miller
+    duckdb
   ];
 }
