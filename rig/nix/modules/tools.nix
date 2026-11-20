@@ -65,6 +65,12 @@
     uv
     ruff
 
+    # Toolchains of the repos this host builds. Their own flake.nix is the
+    # precise declaration; these copies keep the shell working in repos
+    # whose environment is not activated by direnv (see the header).
+    cargo
+    rustc
+    go
 
     # Viewers for the data that lives here. ~/work is the SMB share, so the
     # CSVs and the markdown people drop from their phones land on this

@@ -37,3 +37,34 @@ cercano hacia arriba.
 - Los entornos activos tienen GC root (nix-direnv) — el recolector no los
   borra. Lo huérfano se limpia con el GC de Nix (ver
   [lifecycle.md](./lifecycle.md); `prim doctor`/prune llega con P5).
+
+## Repos ya migrados
+
+| Repo | `flake.nix` | Que aporta |
+| --- | --- | --- |
+| `prim` | `flake.nix` | `rustc cargo rust-analyzer clippy rustfmt` |
+| `gt` | `flake.nix` | `go` + `gcc` (para `go test -race`) |
+| `knt/ap` | `flake.nix` | `python3 uv terraform google-cloud-sdk` |
+
+Ninguno fija versiones: `nixpkgs` se toma de `nixos-unstable` y **no se
+commitea `flake.lock`**, asi que cada uso resuelve el arbol vigente. Para
+revisar que el entorno quedo bien, sin tocar el repo:
+
+```
+cd <repo> && nix develop --command bash -c 'tool --version'
+```
+
+`cxas-scrapi` y `google-adk` no estan en nixpkgs: siguen siendo uv tools y
+los instala `make setup` de `knt/ap`, que necesita `uv` disponible.
+
+## Activacion sin direnv
+
+Activar el entorno de un repo necesita `use flake` en su `.envrc`. Los
+`.envrc` de `prim` y `gt` ya existen y apuntan a los `.env.local` de cada
+organizacion: **no se tocan**. Mientras tanto, el perfil `vps` del rig lleva
+los toolchains que hospeda (`cargo rustc go uv ruff`), para que `cargo build`
+y `go build` sigan funcionando en una shell normal sin activar nada.
+
+Cuando un repo tenga su `.envrc` con `use flake` y `direnv allow` ejecutado,
+sus toolchains dejan de hacer falta en el perfil global y vuelven a ser
+exclusivos del repo.
