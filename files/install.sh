@@ -98,14 +98,14 @@ ensure_home_traversable() {
     # perfect (verified: listing the share worked, put/get/ls did not).
     #
     # The fix is traversal only (x): the home stays unlistable, only
-    # reachable by a known path. Preferred form is an ACL (g:primfiles:--x)
-    # because it grants traversal to the share group alone; the mode
-    # change (o+x) reaches EVERY local account, so it is only kept while
-    # the ACL path is unavailable or unproven.
-    if sudo -u "$SMB_USER" test -x "$HOME" 2>/dev/null; then
-        log "home atravessable por '$SMB_USER' (ya estaba bien)."
-        return 0
-    fi
+    # reachable by a known path. The ACL (g:primfiles:--x) is tried
+    # FIRST because it grants traversal to the share group alone; the
+    # mode change (o+x) reaches EVERY local account, so it is only kept
+    # while the ACL path is unavailable or unproven.
+    #
+    # Order matters: the traversability check must NOT come first, or an
+    # already-traversable home (left over from a previous o+x run) would
+    # short-circuit and the ACL would never be applied.
     if command -v setfacl >/dev/null 2>&1 && sudo setfacl -m "g:$GROUP:--x" "$HOME" 2>/dev/null; then
         # Only drop the world-execute bit once the ACL is proven to give
         # filesmb the traversal: a silent ACL failure must not lock the
@@ -119,6 +119,13 @@ ensure_home_traversable() {
         fi
         return 0
     fi
+    # No ACL available: fall back to the mode bit, which is world-scoped.
+    if sudo -u "$SMB_USER" test -x "$HOME" 2>/dev/null; then
+        log "home atravesable por '$SMB_USER' (ya estaba bien)."
+        return 0
+    fi
+    sudo chmod o+x "$HOME"
+    log "home con permiso de traversing (o+x) para que el share sea alcanzable."
 }
 
 smb_conf_body() {
