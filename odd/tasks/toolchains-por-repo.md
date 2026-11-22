@@ -65,3 +65,40 @@ en `rig/common/entornos-repo.md` y `rig/nix/templates/repo/`.
   `terraform 1.17.1`, `awscli2 2.36.31`; NO existen `cxas-scrapi` ni `google-adk`.
   `prim` no fija version de Rust (no hay `rust-toolchain.toml`, `edition = "2021"`),
   asi que adoptar el rustc de nixpkgs no rompe el proyecto.
+- L4 (2026-11-20, verificacion): `nix develop` en `~/work/prim` dio `cargo 1.99.0` /
+  `rustc 1.99.1` y `cargo build` OK (`PRIM_BUILD_OK`); en `~/work/gt` dio
+  `go1.27.3 linux/amd64` y `go build ./cmd/gt` OK (`GT_BUILD_OK`). El primer
+  intento de `knt/ap` fallo: **terraform es unfree** en nixpkgs, resuelto con
+  `config.allowUnfree = true` en ese flake (con el scope acotado al repo).
+- L5 (2026-11-20, pin del rig): `nix flake update` en `rig/nix` movio nixpkgs de
+  2026-11-03 a **2026-11-19** y home-manager de 2026-11-04 a 2026-11-18.
+  Motivo: el pin viejo traia `go 1.26.10` y el `go.mod` de `gt` exige
+  `go >= 1.27.2`, asi que el `go` del perfil global no podia compilar `gt`.
+  Efecto lateral buscado: el rig y los flakes por repo pasan a compartir la
+  misma revision de nixpkgs, asi que rust/go no se duplican en el store.
+- L6 (2026-11-20, commits): `prim` rama `feat/toolchains-por-repo`:
+  `c7b7009 feat(rig): the vps profile gets the data viewers and the python packaging`
+  (323 lineas) y `1deb00b feat(rig): the vps profile carries the toolchains it hosts`
+  (148 lineas). `gt` rama `feat/flake-go`: `261ad09 feat: declare the go toolchain in a flake`.
+  `knt/ap`: rama `feat/flake-python-infra`, pendiente.
+  **Limite de slice:** los dos commits de `prim` suman 471 lineas, por encima
+  del corte de ~400. Al publicar: un PR con los dos commits (el segundo es
+  reviewer-friendly y el primero no depende del segundo), o dos PRs encadenados
+  si el review lo pide. Ningun commit toca `.envrc`, `.env.local` ni
+  `.gitconfig`.
+- L7 (2026-11-20, knt/ap verificado): `nix develop` en `~/work/knt/ap` dio
+  `uv 0.13.9`, `Python 3.14.10`, `Terraform v1.17.2`, `Google Cloud SDK 593.0.0`.
+  Commit `bea5c10 feat: declare the python and infra toolchain in a flake` en la
+  rama `feat/flake-python-infra` (33 lineas).
+- L8 (2026-11-20, deduplicacion): el store tiene UNA sola copia de
+  `rustc-1.99.1` (`mslcwkiy...`) y de `go-1.27.3` (`6pavbn9m...`): el rig
+  actualizado y los flakes por repo comparten la misma revision de nixpkgs, asi
+  que el toolchain global y el del repo no se duplican. El store paso de 5.5G a
+  8.3G con los toolchains, gcloud, terraform y uv.
+- L9 (2026-11-20, AVISO): NO correr `nix-collect-garbage` todavia. Los paths
+  nuevos todavia no son GC roots: el perfil instalado es el viejo (sin los
+  toolchains) porque `prim install rig` activa el flake REMOTO
+  (`github:bit-crew/prim?dir=rig/nix`, `src/dotfiles.rs`). El GC los borraria.
+  Orden obligatorio: commit + push + `prim install rig --profile vps` -> y solo
+  despues borrar `~/.rustup`, `~/.cargo`, `~/.local/go` y el tool uv `ruff`, y
+  recien ahi el GC.
