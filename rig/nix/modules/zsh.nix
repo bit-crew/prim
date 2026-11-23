@@ -36,9 +36,6 @@
       export COLORTERM=truecolor
       '')
       (lib.mkOrder 1200 (''
-      # rustup / cargo (self-installed toolchains may still exist; harmless if absent)
-      [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
-
       # Aterrizar en ~/work: al abrir una consola nueva o entrar por SSH sin estar
       # en ningun proyecto, la sesion arranca en la carpeta de organizaciones (una
       # por cuenta de git). La guarda (PRIM_LANDING exportada) evita re-mover shells
@@ -66,8 +63,6 @@
     # nix profile last as a fallback for fresh machines.
     "$HOME/.local/bin"
     "$HOME/.local/node/bin"
-    "$HOME/.local/go/bin"
-    "$HOME/.cargo/bin"
     "$HOME/go/bin"
     "$HOME/.nix-profile/bin"
   ];
