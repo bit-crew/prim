@@ -68,8 +68,14 @@
     # Toolchains of the repos this host builds. Their own flake.nix is the
     # precise declaration; these copies keep the shell working in repos
     # whose environment is not activated by direnv (see the header).
+    # clippy and rustfmt come with them: `cargo clippy` and `cargo fmt` are
+    # the checks prim's CI runs, so a shell without them is a shell that
+    # cannot lint. bacon is the cargo watcher that was installed by hand.
     cargo
     rustc
+    clippy
+    rustfmt
+    bacon
     go
 
     # Viewers for the data that lives here. ~/work is the SMB share, so the
