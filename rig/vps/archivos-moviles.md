@@ -68,8 +68,8 @@ desde ciertos dispositivos, se define en la consola de Tailscale
 (Settings > Access Controls), no en este repo.
 
 Ojo: un tailnet **sin** archivo de politica permite todo. En el momento
-en que agregas el archivo, pasás a deny-by-default: lo que no este
-concedido, no pasa. Para este VPS el minimo que hay que conceded (ssh para
+en que agregas el archivo, pasas a deny-by-default: lo que no este
+concedido, no pasa. Para este VPS el minimo que hay que conceder (ssh para
 el arranque de mosh, el rango UDP de mosh y el puerto SMB) es:
 
 ```json
@@ -89,6 +89,50 @@ se etiqueta el iPhone (`tag:iphone`) y el grant usa `src: ["tag:iphone"]`.
 Un device etiquetado pierde la identidad de usuario para SSH, lo cual es
 irrelevante aca porque el share va por SMB.
 
+### Que gobierna la ACL (y que no)
+
+Las ACLs solo ven trafico **dentro del tailnet** (entre IPs `100.x` de tus
+dispositivos). Nada de lo que va y viene de Internet pasa por esa mesa:
+
+- VPS → GitHub/Bitbucket/Codeberg (`git`), GCP/AWS/Cloudflare (CLIs,
+  APIs): sale por la interfaz publica; el baseline de nftables no filtra
+  el trafico de salida y las ACLs no lo ven.
+- Internet → VPS (webhooks, deploy por SSH): entra por la IP publica al
+  22 y lo gobiernan nftables + el hardening de sshd.
+- Cliente → Internet con Tailscale activo: sin exit node, el telefono o
+  la tablet salen directo a Internet; ese trafico ni pasa por el VPS ni
+  por las ACLs.
+
+El unico caso donde las ACLs rozan Internet es si algun dia el VPS se usa
+como exit node (`autogroup:internet:*`), que no es el caso.
+
+### El modelo completo por capas
+
+| Capa | Que decide | Estado |
+|------|------------|--------|
+| nftables | por que puerta entra (solo `tailscale0`) y que puerto | activa |
+| ACL de Tailscale | que dispositivo del tailnet puede abrir que conexion | la define el usuario en la consola |
+| Samba (`filesmb`) | quien se autentica y entra al share | activa |
+| Permisos Unix (`primfiles`) | que puede leer y escribir una vez dentro | activa |
+
+Un detalle que conviene tener claro: nftables **no distingue dispositivos**
+(todo el tailnet entra por `tailscale0`), asi que sin archivo de politica un
+miembro comprometido del tailnet (un telefono robado desbloqueado, malware
+en la tablet) llega al 22, al 445 y a mosh como cualquier cliente legitimo.
+Con el grant aplicado, un cliente solo abre esos tres destinos en el VPS,
+el VPS no puede iniciar conexiones hacia los clientes (si el VPS se
+compromete, no salta a tu telefono) y cliente ↔ cliente queda bloqueado.
+Y la ACL no reemplaza la credencial: aunque un equipo llegue al 445, sin
+la clave de `filesmb` no autentica, y con ella solo ve `~/work` limitado
+por `primfiles`.
+
+### Ajustes de consola recomendados
+
+- Desactiva key expiry para el VPS: es un servidor, no tiene que
+  re-autenticarse nunca.
+- Activa Shield (bloquear conexiones entrantes) en los clientes Tailscale
+  del iPhone y la tablet: solo necesitan conexiones salientes.
+
 ## Conectar
 
 Necesitas la IP del VPS en el tailnet (empieza por `100.`): `tailscale ip -4`
@@ -107,6 +151,24 @@ en el VPS, o mira la maquina en la app de Tailscale. Ejemplo en adelante:
 Escribes con normalidad y los archivos caen en `~/work` del VPS con grupo
 `primfiles` (archivos 0664, directorios 0775): tu usuario y `filesmb`
 comparten lectura y escritura.
+
+### Configuracion del lado del cliente
+
+- **Tailscale de sistema** en cada cliente, con la misma cuenta del tailnet.
+  En Android/Termux (la tablet): la app de Tailscale de Android, **no**
+  `tailscaled` dentro de Termux — sin root no hay TUN y el modo
+  userspace+SOCKS es fragil. Con la app del sistema, todo Termux ya sale
+  por el tailnet.
+- **iPhone**: VPN en modo on-demand para que el share este siempre; la
+  clave (`prim files password`) queda guardada en el keychain.
+- **Windows**: guarda la credencial una vez para que el Explorador no la
+  pida en cada sesion: `cmdkey /add:100.101.102.103 /user:filesmb`.
+- **Linux**: `mount.cifs` con `vers=3.0` y la clave en un archivo de
+  credentials con modo `600`, nunca en el fstab.
+- Mosh va a la **IP del tailnet** (`mosh -p 60000:60010
+  debian@100.101.102.103`): el UDP solo se acepta por `tailscale0`.
+- No expongas el sshd de Termux al tailnet; con la ACL aplicada queda
+  bloqueado de todos modos.
 
 ### iOS 18+: si la carpeta aparece pero no te deja subir ni mover
 
