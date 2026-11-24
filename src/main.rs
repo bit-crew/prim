@@ -404,7 +404,10 @@ fn pipe_to_sh(script: &str, args: &[&str]) -> bool {
 /// Same, but with a different program: `sudo sh -s --` runs the script as
 /// root, which the host hardening needs (/etc, nftables, sshd).
 fn pipe_to_cmd(program: &str, args: &[&str], script: &str) -> bool {
-    let child = Command::new(program).args(args).stdin(Stdio::piped()).spawn();
+    let child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .spawn();
     match child {
         Ok(mut c) => {
             if let Some(mut stdin) = c.stdin.take() {
