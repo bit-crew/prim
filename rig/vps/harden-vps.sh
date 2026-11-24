@@ -54,7 +54,20 @@ ALLOW_TCP_PORTS="22"   # the only port open to the Internet; the rest is tailsca
 MOSH_IFACE="tailscale0"
 MOSH_UDP_RANGE="60000-60010"
 SSHD_DROPIN_SRC="$(dirname "$0")/sshd-hardening.conf"
+SSHD_DROPIN_URL="https://raw.githubusercontent.com/bit-crew/prim/main/rig/vps/sshd-hardening.conf"
 SSHD_DROPIN_DST="/etc/ssh/sshd_config.d/00-prim-hardening.conf"
+
+# The drop-in content, from wherever this script can reach it: the repo
+# copy when it runs from a checkout, the rig's own source of truth when it
+# is piped in by `prim install rig` (there $0 is "sh" and there is no
+# sibling file).
+load_sshd_dropin() {
+    if [ -f "${SSHD_DROPIN_SRC}" ]; then
+        cat "${SSHD_DROPIN_SRC}"
+        return 0
+    fi
+    curl -4 -fsSL "${SSHD_DROPIN_URL}" 2>/dev/null
+}
 
 say() { echo "[harden-vps] $*"; }
 
@@ -128,19 +141,29 @@ ensure_firewall() {
 }
 
 ensure_sshd() {
-    [ -f "${SSHD_DROPIN_SRC}" ] || {
-        say "sshd: drop-in source missing (${SSHD_DROPIN_SRC}), skipping"
-        return 0
-    }
     mkdir -p /etc/ssh/sshd_config.d
-    install -m 644 "${SSHD_DROPIN_SRC}" "${SSHD_DROPIN_DST}"
+    tmp="${SSHD_DROPIN_DST}.tmp"
+    if ! load_sshd_dropin > "${tmp}" || [ ! -s "${tmp}" ]; then
+        rm -f "${tmp}"
+        say "sshd: no drop-in source (neither ${SSHD_DROPIN_SRC} nor the rig url), skipping"
+        return 0
+    fi
+    # Keep the previous drop-in so a broken new one can be rolled back.
+    cp "${SSHD_DROPIN_DST}" "${SSHD_DROPIN_DST}.bak" 2>/dev/null || true
+    install -m 644 "${tmp}" "${SSHD_DROPIN_DST}"
+    rm -f "${tmp}"
     # Validate BEFORE reloading: a broken drop-in must not take sshd down.
     # reload (not restart) keeps the sessions that are already open alive.
     if ! sshd -t; then
-        say "sshd: config invalid, removing the drop-in"
-        rm -f "${SSHD_DROPIN_DST}"
+        say "sshd: config invalid, restoring the previous drop-in"
+        if [ -f "${SSHD_DROPIN_DST}.bak" ]; then
+            mv "${SSHD_DROPIN_DST}.bak" "${SSHD_DROPIN_DST}"
+        else
+            rm -f "${SSHD_DROPIN_DST}"
+        fi
         return 1
     fi
+    rm -f "${SSHD_DROPIN_DST}.bak"
     systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
     say "sshd: puerto 22 con clave publica o usuario+password; sin root, sin teclado-interactivo, solo 'debian'"
 }
