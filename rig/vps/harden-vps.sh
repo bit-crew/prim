@@ -15,6 +15,12 @@
 #      file per stack, e.g. files' SMB 445): plain nft statements applied
 #      AFTER the baseline, so an app rule survives every re-apply.
 #      Docker's own tables are NOT flushed.
+#   3. An sshd drop-in (/etc/ssh/sshd_config.d/00-prim-hardening.conf,
+#      from rig/vps/sshd-hardening.conf): key-only login, no password and
+#      no root over ssh. The name sorts before 50-cloud-init.conf on
+#      purpose: OpenSSH keeps the first value it obtains for a keyword and
+#      the Include sits at the top of sshd_config, so cloud-init's
+#      "PasswordAuthentication yes" would otherwise win.
 #
 # Usage (root):
 #   harden-vps              swap + firewall with a 120s auto-revert timer
@@ -32,6 +38,8 @@ REVERT_UNIT=vps-hardening-revert.timer
 ALLOW_TCP_PORTS="22"
 MOSH_IFACE="tailscale0"
 MOSH_UDP_RANGE="60000-60010"
+SSHD_DROPIN_SRC="$(dirname "$0")/sshd-hardening.conf"
+SSHD_DROPIN_DST="/etc/ssh/sshd_config.d/00-prim-hardening.conf"
 
 say() { echo "[harden-vps] $*"; }
 
@@ -104,6 +112,24 @@ ensure_firewall() {
     done
 }
 
+ensure_sshd() {
+    [ -f "${SSHD_DROPIN_SRC}" ] || {
+        say "sshd: drop-in source missing (${SSHD_DROPIN_SRC}), skipping"
+        return 0
+    }
+    mkdir -p /etc/ssh/sshd_config.d
+    install -m 644 "${SSHD_DROPIN_SRC}" "${SSHD_DROPIN_DST}"
+    # Validate BEFORE reloading: a broken drop-in must not take sshd down.
+    # reload (not restart) keeps the sessions that are already open alive.
+    if ! sshd -t; then
+        say "sshd: config invalid, removing the drop-in"
+        rm -f "${SSHD_DROPIN_DST}"
+        return 1
+    fi
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+    say "sshd: key-only login (password auth off, root login off)"
+}
+
 schedule_revert() {
     systemctl stop "${REVERT_UNIT}" 2>/dev/null || true
     systemd-run --unit="${REVERT_UNIT%.timer}" --on-active=120 \
@@ -120,6 +146,7 @@ case "${1:-}" in
         fi
         ensure_swap
         ensure_firewall
+        ensure_sshd
         say "confirmed: state is persistent across reboots"
         ;;
     --status)
@@ -129,6 +156,7 @@ case "${1:-}" in
     *)
         ensure_swap
         ensure_firewall
+        ensure_sshd
         schedule_revert
         say "VERIFY NOW (new ssh login + allowed ports), then run: $0 --confirm"
         ;;
