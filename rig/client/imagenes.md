@@ -6,6 +6,10 @@ texto**. Pegar texto por SSH funciona nativo (el terminal manda los
 caracteres); OSC 52 solo hace falta en el sentido inverso, que es que el
 VPS escriba en tu portapapeles local.
 
+Regla de la casa: **Ctrl+V pega la imagen**. Lo que llega a la sesion es la
+ruta del archivo, porque un terminal no transmite imagenes: transmite
+texto.
+
 El VPS recibe las imagenes en un inbox **efimero**:
 
 ```
@@ -16,6 +20,36 @@ XDG cache = disposable por definicion. Esta **fuera de `~/work`**: una
 captura nunca entra a un repo, ni a un indice de git, ni al share de SMB.
 La limpieza corre **dos veces por dia** (03:00 y 15:00) y borra **solo lo
 que tiene mas de 12 horas**: el peor caso es ~24h.
+
+## Ctrl+V en todos los clientes
+
+| Cliente | Ctrl+V | Por que |
+|---------|--------|---------|
+| Linux/Windows con `herdr --remote <host>` | **nativo** | herdr corre en tu maquina, lee el portapapeles, copia la imagen a un archivo temporal del VPS y pega la ruta en el pane |
+| Linux/Windows por `ssh <host>` (el `.zshrc` del VPS hace `exec herdr`) | no puede | herdr corre entero en el servidor y no ve el portapapeles de tu escritorio |
+| DC-1 (Termux) | **binding** | `extra-keys` de Termux: CTRL+V corre `img-grab` (sube la imagen y deja la ruta en el portapapeles) |
+| iPhone (moshi) | no puede | no hay portapapeles de escritorio: la imagen entra por el share y se pega la ruta |
+
+**El modo de conexion decide.** Por eso Ctrl+V "no hace nada" cuando se
+entra por SSH: no es un bug del terminal, es que el herdr del servidor no
+tiene acceso al portapapeles de la notebook. Para que el puente funcione
+en el escritorio hay que entrar con el cliente:
+
+```
+herdr --remote vps
+```
+
+Ahí el herdr local dibuja la UI y puede leer el portapapeles: copia la
+imagen a un temp del VPS y pega la ruta. Con Ctrl+V tomado por la imagen,
+el texto se pega con **CTRL+SHIFT+V**.
+
+En los terminales donde Ctrl+V ya es el pegado de texto (Ghostty, kitty,
+WezTerm, iTerm2) la imagen se pega con **CTRL+SHIFT+G** y el texto
+sigue con Ctrl+V. Donde Ctrl+V esta libre (dentro de herdr, o en Termux
+donde el pegado de texto es Ctrl+SHIFT+V) la imagen se pega con Ctrl+V.
+
+El share SMB es para otra cosa: descargar archivos completos y directorios,
+no capturas sueltas.
 
 ## Instalar
 
@@ -29,6 +63,10 @@ Instala `img-grab` en `~/.local/bin` y **cablea el binding solo**, segun el
 terminal que detecte (Ghostty y kitty se editan en el sitio, con backup del
 config; para WezTerm e iTerm2 imprime el snippet porque son archivos Lua y
 no se tocan). Es idempotente: correrlo dos veces no duplica nada.
+
+Si te conectas con `herdr --remote`, no instalas nada: herdr ya pega la
+imagen con Ctrl+V. El `img-grab` es para los clientes sin herdr local
+(DC-1) o para cuando queres una tecla propia.
 
 En el **VPS** (donde corre el agente), la limpieza del inbox **viene con el
 rig**: el perfil `vps` del flake instala el script, las dos unidades de
@@ -98,14 +136,22 @@ Un binding, una accion: la imagen sube y la ruta queda lista para pegar.
 **Termux (DC-1)** — en `~/.termux/termux.properties`:
 
 ```
-extra-keys = CTRL+ALT+G,~/.local/bin/img-grab\n
+extra-keys = CTRL+V,~/.local/bin/img-grab\n
 ```
+
+En Termux el pegado de texto es CTRL+SHIFT+V, asi que CTRL+V queda libre
+para la imagen. La imagen sube y la **ruta** queda en el portapapeles del
+telefono: se pega con CTRL+SHIFT+V.
 
 **Ghostty (Linux)** — en `~/.config/ghostty/config`:
 
 ```
 keybind = CTRL+SHIFT+G=exec:/home/TU_USUARIO/.local/bin/img-grab
 ```
+
+Aqui Ctrl+V queda como pegado de texto: en un terminal de escritorio la
+imagen va por CTRL+SHIFT+G, y Ctrl+V pega imagenes solo dentro de herdr
+(`herdr --remote`), donde el herdr local intercepta la tecla.
 
 **WezTerm (Windows)** — en `wezterm.lua`:
 

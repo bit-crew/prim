@@ -113,7 +113,7 @@ case "${TERM_PROGRAM:-}" in
     *)
         if [ -n "${PREFIX:-}" ] && [ -d "$HOME_DIR/.termux" ]; then
             log "Termux: add this line to ~/.termux/termux.properties"
-            printf '  extra-keys = CTRL+ALT+G,%s\\n\n' "$TARGET"
+            printf '  extra-keys = CTRL+V,%s\\n\n' "$TARGET"
         else
             log "terminal not detected; here are the snippets"
             printf '  Ghostty (~/.config/ghostty/config):\n    keybind = CTRL+SHIFT+G=exec:%s\n' "$TARGET"
@@ -139,4 +139,7 @@ La imagen queda en el inbox del VPS (~/.cache/prim/inbox) y la limpieza
 borra lo que tenga mas de 12 horas, dos veces por dia.
 
 Si el remoto no se llama "vps", pasale el host: $TARGET --host <tu-alias-ssh>
+
+Si te conectás al VPS con "herdr --remote <host>", no necesitás nada de
+esto: herdr ya pega la imagen con CTRL+V (y el texto, con CTRL+SHIFT+V).
 EOF

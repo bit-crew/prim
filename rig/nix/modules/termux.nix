@@ -30,9 +30,12 @@
     source = pkgs.writeText "termux.properties" ''
       # Managed by the rig (prim-clipboard).
       #
-      # CTRL+ALT+G runs img-grab: it grabs the clipboard image, pushes it
+      # CTRL+V runs img-grab: it grabs the clipboard image, pushes it
       # to the VPS inbox and leaves the remote path in the clipboard as text.
-      extra-keys = CTRL+ALT+G,~/.local/bin/img-grab\n
+      # In Termux the text paste is CTRL+SHIFT+V, so CTRL+V is free for the
+      # image. On desktop terminals (Ghostty, kitty, WezTerm) the image key
+      # is CTRL+SHIFT+G because there CTRL+V is the text paste.
+      extra-keys = CTRL+V,~/.local/bin/img-grab\n
     '';
   };
 }
