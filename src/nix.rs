@@ -131,6 +131,13 @@ impl Plan {
 /// HOME_MANAGER_BACKUP_OVERWRITE=1 lets a stale `<file>.prim-backup` be
 /// replaced: prim keeps its own snapshots (see dotfiles), so home-manager's
 /// backup slot is free to be reused instead of failing the activation.
+///
+/// `--refresh` is NOT optional: nix caches the resolution of the rig's
+/// github ref (tarball-ttl, 1h) and every use refreshes that cache, so
+/// without it the activation keeps deploying a STALE revision of the repo
+/// (the rig's flake.lock does NOT pin the repo itself). The rig would then
+/// install whatever main was an hour ago, and a pushed change would appear
+/// to install "successfully" while changing nothing.
 fn switch_plan(profile: &str) -> Plan {
     let mut env = identity_env();
     env.push(("HOME_MANAGER_BACKUP_OVERWRITE", "1".to_string()));
@@ -143,6 +150,7 @@ fn switch_plan(profile: &str) -> Plan {
             "switch".into(),
             "--flake".into(),
             format!("{RIG_FLAKE_REF}#{profile}"),
+            "--refresh".into(),
             "-b".into(),
             BACKUP_SUFFIX.into(),
             "--impure".into(),
@@ -522,13 +530,14 @@ mod tests {
     }
 
     /// The activation plan is the exact command line: hm runner, switch,
-    /// flake#profile, backup suffix and --impure (identity env present).
+    /// flake#profile, --refresh (always the latest main), backup suffix and
+    /// --impure (identity env present).
     #[test]
     fn switch_plan_line_is_exact() {
         let plan = switch_plan("dc1");
         assert_eq!(
             plan.args.join(" "),
-            "run github:nix-community/home-manager/master -- switch --flake github:bit-crew/prim?dir=rig/nix#dc1 -b prim-backup --impure"
+            "run github:nix-community/home-manager/master -- switch --flake github:bit-crew/prim?dir=rig/nix#dc1 --refresh -b prim-backup --impure"
         );
         assert!(plan.env.iter().any(|(k, _)| *k == "PRIM_GIT_NAME"));
         assert!(plan.env.iter().any(|(k, _)| *k == "PRIM_GIT_EMAIL"));
