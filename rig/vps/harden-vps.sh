@@ -8,7 +8,13 @@
 #   2. An nftables input filter that only allows lo, established/related,
 #      ICMP/ICMPv6, TCP 22 (ssh) and the mosh UDP range 60000-60010 (only
 #      from tailscale0, see rig/vps/mosh.md). Everything else inbound is
-#      dropped. Service-specific ports are owned by their stacks: e.g. gt's
+#      dropped. TCP 22 is the ONLY port this host exposes to the Internet:
+#      it stays open because the VPS is reached from outside the tailnet,
+#      and sshd itself is locked down to key-or-password (see 3). Every
+#      other port (SMB 445, the mosh UDP range, whatever an app adds) is
+#      reachable only through tailscale0, so a tailnet outage leaves SSH
+#      working and takes the rest down with it.
+#      Service-specific ports are owned by their stacks: e.g. gt's
 #      WorkSpaces web client opens its own tcp 8443 allow inside this table
 #      (its activate.sh + unit re-add it after every re-apply/reboot).
 #      Application-owned ports live in /etc/nftables.d/prim-ext/*.nft (one
@@ -16,10 +22,11 @@
 #      AFTER the baseline, so an app rule survives every re-apply.
 #      Docker's own tables are NOT flushed.
 #   3. An sshd drop-in (/etc/ssh/sshd_config.d/00-prim-hardening.conf,
-#      from rig/vps/sshd-hardening.conf): key-only login, no password and
-#      no root over ssh. The name sorts before 50-cloud-init.conf on
-#      purpose: OpenSSH keeps the first value it obtains for a keyword and
-#      the Include sits at the top of sshd_config, so cloud-init's
+#      from rig/vps/sshd-hardening.conf): port 22 accepts a public key OR
+#      user + password, and nothing else (no keyboard-interactive, no root,
+#      only the 'debian' account). The name sorts before 50-cloud-init.conf
+#      on purpose: OpenSSH keeps the first value it obtains for a keyword
+#      and the Include sits at the top of sshd_config, so cloud-init's
 #      "PasswordAuthentication yes" would otherwise win.
 #
 # Usage (root):
@@ -29,13 +36,21 @@
 #   harden-vps --status     show current state
 set -eu
 
+# The rig installs this as part of `prim install rig` (prim runs it with
+# sudo) and by hand as `sudo ./rig/vps/harden-vps.sh`. Root is required:
+# it owns /etc, the nftables table and the sshd drop-in.
+[ "$(id -u)" = "0" ] || {
+    echo "[harden-vps] needs root (sudo)" >&2
+    exit 1
+}
+
 SWAP_FILE=/swapfile
 SWAP_SIZE_MB=2048
 NFT_TABLE=vps_hardening
 NFT_RULES_FILE=/etc/nftables.d/${NFT_TABLE}.nft
 NFT_EXT_DIR=/etc/nftables.d/prim-ext
 REVERT_UNIT=vps-hardening-revert.timer
-ALLOW_TCP_PORTS="22"
+ALLOW_TCP_PORTS="22"   # the only port open to the Internet; the rest is tailscale0-only
 MOSH_IFACE="tailscale0"
 MOSH_UDP_RANGE="60000-60010"
 SSHD_DROPIN_SRC="$(dirname "$0")/sshd-hardening.conf"
@@ -127,7 +142,7 @@ ensure_sshd() {
         return 1
     fi
     systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
-    say "sshd: key-only login (password auth off, root login off)"
+    say "sshd: puerto 22 con clave publica o usuario+password; sin root, sin teclado-interactivo, solo 'debian'"
 }
 
 schedule_revert() {

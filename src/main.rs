@@ -213,7 +213,7 @@ fn install_components(args: &[String]) {
             // the activation. Client profiles never serve SMB.
             if profile == "vps" {
                 if nix::dry_run() {
-                    println!("[prim] PRIM_DRY_RUN=1: no se ejecuta files; encadenaria 'files/install.sh' (share de ~/work).");
+                    println!("[prim] PRIM_DRY_RUN=1: no se ejecuta files; encadenaria 'files/install.sh' (share de ~/work) y el hardening del host.");
                 } else {
                     println!("[prim] instalando files (share ~/work del workstation)...");
                     if !run_component("files/install.sh", &[]) {
@@ -221,6 +221,14 @@ fn install_components(args: &[String]) {
                         failures += 1;
                     } else {
                         chained_files = true;
+                    }
+                    // Host hardening (firewall + sshd baseline): the rig owns
+                    // it, so every rig update re-applies it. Same chain as
+                    // files, but as root: it owns /etc, nftables and sshd.
+                    println!("[prim] aplicando hardening del host (firewall + sshd)...");
+                    if !run_component_root("rig/vps/harden-vps.sh", &["--confirm"]) {
+                        eprintln!("[prim] fallo aplicando hardening (continuo).");
+                        failures += 1;
                     }
                 }
             }
@@ -359,6 +367,23 @@ fn run_component(install_path: &str, extra: &[&str]) -> bool {
     pipe_to_sh(&script, &args)
 }
 
+/// Like run_component, but the script runs as root. The host hardening owns
+/// /etc, the nftables table and the sshd drop-in, so it cannot run as the
+/// unprivileged user that `prim install rig` starts from.
+fn run_component_root(install_path: &str, extra: &[&str]) -> bool {
+    let url = format!("{RAW_BASE}/{install_path}");
+    let script = match curl_text(&url) {
+        Some(s) => s,
+        None => {
+            eprintln!("[prim] no se pudo descargar {url}");
+            return false;
+        }
+    };
+    let mut args = vec!["sh", "-s", "--"];
+    args.extend_from_slice(extra);
+    pipe_to_cmd("sudo", &args, &script)
+}
+
 /// Fetch a URL body as text (IPv4 forced to avoid broken-IPv6 hangs).
 fn curl_text(url: &str) -> Option<String> {
     let out = Command::new("curl")
@@ -373,7 +398,13 @@ fn curl_text(url: &str) -> Option<String> {
 /// Pipe `script` to `sh` with the given args, inheriting stdout/stderr/stdin so
 /// the component installer's own prompts (e.g. rig's dc1/vps question) work.
 fn pipe_to_sh(script: &str, args: &[&str]) -> bool {
-    let child = Command::new("sh").args(args).stdin(Stdio::piped()).spawn();
+    pipe_to_cmd("sh", args, script)
+}
+
+/// Same, but with a different program: `sudo sh -s --` runs the script as
+/// root, which the host hardening needs (/etc, nftables, sshd).
+fn pipe_to_cmd(program: &str, args: &[&str], script: &str) -> bool {
+    let child = Command::new(program).args(args).stdin(Stdio::piped()).spawn();
     match child {
         Ok(mut c) => {
             if let Some(mut stdin) = c.stdin.take() {
