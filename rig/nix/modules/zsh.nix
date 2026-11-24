@@ -34,6 +34,13 @@
         ""|dumb|unknown) export TERM=xterm-256color ;;
       esac
       export COLORTERM=truecolor
+      # hash -r: la hash table de zsh guarda la ruta absoluta de cada comando ya
+      # ejecutado. Si ese binario desaparece (toolchain viejo desinstalado, binario
+      # movido al perfil de nix), zsh sigue invocando la ruta vieja y falla con
+      # "no such file or directory" en vez de "command not found". Con hash -r la
+      # resolucion se rehace contra el PATH actual. Va antes de los hooks de
+      # prompt (starship, zoxide, atuin), que resolven sus binarios por nombre.
+      hash -r
       '')
       (lib.mkOrder 1200 (''
       # Aterrizar en ~/work: al abrir una consola nueva o entrar por SSH sin estar
