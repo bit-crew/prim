@@ -39,10 +39,19 @@ const DEFAULT_PROFILE: &str = "vps";
 
 /// How many home-manager generations stay in the profile: the current one
 /// plus a couple of previous (for `home-manager rollback`). Every
-/// activation creates a new link, and every old link is a GC root that
+/// activation creates new links, and every old link is a GC root that
 /// keeps its whole closure alive forever: without pruning, the store grows
 /// with each update and nothing is ever reclaimed.
 const KEEP_GENERATIONS: usize = 3;
+
+/// The link series that home-manager's switch creates in the profiles dir:
+/// `home-manager<N>-link` (the dotfiles generation) and `profile<N>-link`
+/// (the package profile, the user-environment). BOTH are GC roots, and the
+/// old package profiles are what keep a removed tool's closure alive: the
+/// five older user-environments still carried yazi long after it left the
+/// rig, holding ~666 MB in the store. Other entries in the dir (channels,
+/// anything else) are not ours to touch.
+const GENERATION_SERIES: [&str; 2] = ["home-manager", "profile"];
 
 // --- PATH / env helpers ------------------------------------------------------
 
@@ -225,18 +234,20 @@ fn profiles_dir() -> Option<std::path::PathBuf> {
     Some(state.join("profiles"))
 }
 
-/// The generation number of a profile link name, when it is one:
-/// `home-manager-7-link` is 7. Anything else is not a generation link.
-fn generation_number(name: &str) -> Option<u64> {
-    name.strip_prefix("home-manager-")
-        .and_then(|rest| rest.strip_suffix("-link"))
-        .and_then(|digits| digits.parse::<u64>().ok())
+/// The generation number of a profile link name, when it belongs to that
+/// series: `home-manager-7-link` is 7 of the `home-manager` series.
+/// Anything else (the series symlink itself, the store paths, another
+/// series) is not a generation link.
+fn generation_number(name: &str, series: &str) -> Option<u64> {
+    name.strip_prefix(series)?
+        .strip_prefix('-')?
+        .strip_suffix("-link")?
+        .parse::<u64>()
+        .ok()
 }
 
-/// The generation links of the home-manager profile with their number,
-/// oldest first. Only `home-manager<N>-link` entries count: the profile
-/// itself (`home-manager`) is a symlink to the newest one.
-fn generation_links(dir: &Path) -> Vec<(u64, String)> {
+/// The generation links of one series with their number, oldest first.
+fn generation_links(dir: &Path, series: &str) -> Vec<(u64, String)> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -244,7 +255,7 @@ fn generation_links(dir: &Path) -> Vec<(u64, String)> {
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let number = generation_number(&name)?;
+            let number = generation_number(&name, series)?;
             Some((number, name))
         })
         .collect();
@@ -270,32 +281,35 @@ fn prune_generations(keep: usize) {
     let Some(dir) = profiles_dir() else {
         return;
     };
-    let links = generation_links(&dir);
-    let doomed = links_to_prune(&links, keep);
-    if doomed.is_empty() {
-        return;
-    }
-    if dry_run() {
-        println!(
-            "[prim] PRIM_DRY_RUN=1: no se ejecuta nada; se removerian {} generaciones viejas: {}",
-            doomed.len(),
-            doomed.join(", ")
-        );
-        return;
-    }
     let mut removed = 0;
-    for name in doomed {
-        let path = dir.join(&name);
-        // A symlink into the store: removing it never touches the store.
-        match fs::remove_file(&path) {
-            Ok(()) => removed += 1,
-            Err(e) => eprintln!("[prim] no se pudo remover {name}: {e}"),
+    let mut kept = 0;
+    for series in GENERATION_SERIES {
+        let links = generation_links(&dir, series);
+        let doomed = links_to_prune(&links, keep);
+        kept += links.len().saturating_sub(doomed.len());
+        if doomed.is_empty() {
+            continue;
+        }
+        if dry_run() {
+            println!(
+                "[prim] PRIM_DRY_RUN=1: no se ejecuta nada; se removerian {} links viejos de {series}: {}",
+                doomed.len(),
+                doomed.join(", ")
+            );
+            continue;
+        }
+        for name in doomed {
+            let path = dir.join(&name);
+            // A symlink into the store: removing it never touches the store.
+            match fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(e) => eprintln!("[prim] no se pudo remover {name}: {e}"),
+            }
         }
     }
     if removed > 0 {
         println!(
-            "[prim] generaciones: {removed} links viejos removidos (quedan {} para rollback).",
-            links.len().saturating_sub(removed)
+            "[prim] generaciones: {removed} links viejos removidos (quedan {kept} para rollback)."
         );
     }
 }
@@ -663,23 +677,28 @@ mod tests {
         }
     }
 
-    /// Which names are generation links: the numbered `home-manager<N>-link`
-    /// entries, and nothing else (the profile symlink itself, the store
-    /// paths and any other file in the profiles dir are ignored).
+    /// Which names are generation links of a series: the numbered
+    /// `<series><N>-link` entries, and nothing else (the series symlink
+    /// itself, the store paths and the other series are ignored).
     #[test]
     fn generation_number_matrix() {
         let cases = [
-            ("home-manager-1-link", Some(1)),
-            ("home-manager-11-link", Some(11)),
-            ("home-manager-100-link", Some(100)),
-            ("home-manager", None),
-            ("home-manager-1", None),
-            ("home-manager-x-link", None),
-            ("home-manager-1-link.bak", None),
-            ("other-1-link", None),
+            ("home-manager-1-link", "home-manager", Some(1)),
+            ("home-manager-11-link", "home-manager", Some(11)),
+            ("home-manager-100-link", "home-manager", Some(100)),
+            ("home-manager", "home-manager", None),
+            ("home-manager-1", "home-manager", None),
+            ("home-manager-x-link", "home-manager", None),
+            ("home-manager-1-link.bak", "home-manager", None),
+            ("other-1-link", "home-manager", None),
+            ("profile-1-link", "profile", Some(1)),
+            ("profile-7-link", "profile", Some(7)),
+            ("profile", "profile", None),
+            ("channels-1-link", "profile", None),
+            ("home-manager-1-link", "profile", None),
         ];
-        for (name, expect) in cases {
-            assert_eq!(generation_number(name), expect, "{name}");
+        for (name, series, expect) in cases {
+            assert_eq!(generation_number(name, series), expect, "{name}");
         }
     }
 

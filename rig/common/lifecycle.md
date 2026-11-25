@@ -99,24 +99,36 @@ una vez y se regenera.
   (S1: el GC de nix es el dueño de la limpieza). Imprime el comando antes
   de ejecutarlo; con `PRIM_DRY_RUN=1` lo muestra y no ejecuta nada.
 
-### Generaciones: por qué prim limpia los links viejos
+### Generaciones: por que prim limpia los links viejos
 
-Cada activacion crea un link de generacion nuevo en
-`~/.local/state/nix/profiles/` (`home-manager-<N>-link`), y **cada link viejo
-es un GC root**: su generacion entera sigue viva en el store, con todo su
-closure (ffmpeg, resvg, toolchains, ...) para siempre. Sin limpieza, el
-store crece con cada `prim update` y nada se recupera nunca.
+Cada activacion deja links de generacion en `~/.local/state/nix/profiles/`, y
+**cada link viejo es un GC root**: su generacion entera sigue viva en el
+store, con todo su closure, para siempre.
 
-Por eso la activacion de prim deja **3 generaciones** (la actual y dos
-anteriores, para `home-manager rollback`) y borra los links viejos. Es
-borrar un symlink al store, no borrar el store: las generaciones quedan
-sin referencia y las libera el GC.
+Son **dos series**, y las dos cuentan:
+
+- `home-manager<N>-link` → la generacion de dotfiles.
+- `profile<N>-link` → el perfil de paquetes (el user-environment).
+
+La segunda es la que duele: los user-environments viejos siguen
+arrastrando los closures de las herramientas que ya no estan en el rig
+(los cinco mas viejos seguian con yazi, unos 666 MB en el store, mucho
+despues de que saliera del perfil).
+
+Por eso la activacion de prim deja **3 generaciones de cada serie** (la
+actual y dos anteriores, para `home-manager rollback`) y borra los links
+viejos. Es borrar un symlink al store, no borrar el store: las
+generaciones quedan sin referencia y las libera el GC. Las entradas que no
+son de esas series (channels, etc.) no se tocan.
 
 Ojo con el detalle: `prim doctor --prune` usa `--delete-older-than 30d`, asi
-que un path recien descargado (el closure de yazi, por ejemplo) **no se
-recupera enseguida**, aunque ya nadie lo referencie. Se recupera solo,
-pasados los 30 dias. Para liberar ya, hace falta un
-`nix-collect-garbage` sin filtro de edad.
+que un path recien descargado **no se recupera enseguida**, aunque ya
+nadie lo referencie. Se recupera solo, pasados los 30 dias. Para liberar
+ya, hace falta un `nix-collect-garbage` sin filtro de edad.
+
+Ojo tambien con el self-update: `prim update` reemplaza el binario en
+disco, pero el proceso que sigue corriendo es el viejo. La limpieza de
+generaciones entra en vigor **en la invocacion siguiente**.
 
 ## Conectarse al VPS desde el escritorio
 
