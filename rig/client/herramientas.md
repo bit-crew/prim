@@ -91,6 +91,22 @@ mlr --icsv --ojson cat datos.csv | jq .    # CSV -> JSON -> jq
 mlr browse datos.csv                       # browser interactivo
 ```
 
+**Ojo con las comas**: en miller 6, `-a` (acumuladores) y `-f` (campos)
+toman listas **separadas por comas**, no por espacios. Con espacios, miller
+se come el token siguiente como si fuera un archivo y falla con `open max:
+no such file or directory`. Y el `-f` va antes que el `-a`.
+
+```bash
+mlr --icsv --ojson stats1 -f precio -a count,sum,mean,min,max datos.csv
+mlr --icsv --ojson stats1 -f precio -a count,sum,mean -g categoria datos.csv
+mlr --icsv --ojson stats1 -f precio -a p10,p50,p90 datos.csv
+mlr --icsv --ojson count-distinct -f categoria datos.csv
+```
+
+`stats2` es para pares de campos (`-f x,y`); para una variable sola, `stats1`.
+Las claves de salida llevan el nombre del campo: `precio_count`,
+`precio_sum`, `precio_p50`.
+
 ### `qsv` — analizar CSV
 
 ```bash
@@ -108,10 +124,14 @@ qsv sample datos.csv --random 10
 duckdb -c "select * from 'datos.csv' limit 10"
 duckdb -c "select categoria, count(*) n, avg(precio) from 'datos.csv' group by 1"
 duckdb -c "copy (select * from 'datos.csv') to 'out.parquet'"
+duckdb -c "select * from 'out.parquet' limit 5"
 ```
 
+El `~` se expande: `duckdb -c "select count(*) from '~/work/datos.csv'"`.
+
 Y la composicion con `glow`: `duckdb` puede devolver markdown y `glow` lo
-renderiza.
+renderiza. El `.mode` va en su **propio** `-c` (un `-c` con el punto y la
+consulta pegados no funciona):
 
 ```bash
 duckdb -c ".mode markdown
