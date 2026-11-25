@@ -25,7 +25,7 @@ que tiene mas de 12 horas**: el peor caso es ~24h.
 
 | Cliente | Ctrl+V | Por que |
 |---------|--------|---------|
-| Linux/Windows con `herdr --remote <host>` | **nativo** | herdr corre en tu maquina, lee el portapapeles, copia la imagen a un archivo temporal del VPS y pega la ruta en el pane |
+| Linux/Windows con `herdr --remote <host> --remote-keybindings server` | **nativo** | herdr corre en tu maquina, lee el portapapeles, copia la imagen a un archivo temporal del VPS y pega la ruta en el pane |
 | Linux/Windows por `ssh <host>` (el `.zshrc` del VPS hace `exec herdr`) | no puede | herdr corre entero en el servidor y no ve el portapapeles de tu escritorio |
 | DC-1 (Termux) | **binding** | `extra-keys` de Termux: CTRL+V corre `img-grab` (sube la imagen y deja la ruta en el portapapeles) |
 | iPhone (moshi) | no puede | no hay portapapeles de escritorio: la imagen entra por el share y se pega la ruta |
@@ -36,12 +36,18 @@ tiene acceso al portapapeles de la notebook. Para que el puente funcione
 en el escritorio hay que entrar con el cliente:
 
 ```
-herdr --remote vps
+herdr --remote vps --remote-keybindings server
 ```
 
 Ahí el herdr local dibuja la UI y puede leer el portapapeles: copia la
 imagen a un temp del VPS y pega la ruta. Con Ctrl+V tomado por la imagen,
 el texto se pega con **CTRL+SHIFT+V**.
+
+El `--remote-keybindings server` no es opcional: por default, `herdr
+--remote` usa los keybindings **de tu maquina** y no manda los
+`[[keys.command]]` (los popups de lazygit, `hx .` y lazysql viven en el
+config del VPS). Con el flag, el attach usa el config del servidor y los
+popups vuelven. Ver `rig/common/lifecycle.md`.
 
 En los terminales donde Ctrl+V ya es el pegado de texto (Ghostty, kitty,
 WezTerm, iTerm2) la imagen se pega con **CTRL+SHIFT+G** y el texto

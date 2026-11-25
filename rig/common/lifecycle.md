@@ -118,6 +118,39 @@ recupera enseguida**, aunque ya nadie lo referencie. Se recupera solo,
 pasados los 30 dias. Para liberar ya, hace falta un
 `nix-collect-garbage` sin filtro de edad.
 
+## Conectarse al VPS desde el escritorio
+
+El comando canonico es:
+
+```
+herdr --remote vps --remote-keybindings server
+```
+
+Dos cosas que hay que saber de ese comando:
+
+- **`--remote`**: el herdr cliente corre en tu maquina y dibuja la UI de la
+  sesion que vive en el VPS. Eso es lo que habilita el puente de imagenes:
+  el cliente lee el portapapeles de escritorio, copia la imagen a un
+  archivo temporal del VPS y pega la ruta en el pane (Ctrl+V; el texto
+  queda en Ctrl+Shift+V). Ver `rig/client/imagenes.md`.
+- **`--remote-keybindings server`**: por default un attach remoto usa los
+  keybindings **de la maquina local**, y los `[[keys.command]]` (los
+  popups de lazygit, `hx .` y lazysql, que viven en el config del VPS) no
+  se mandan nunca al host remoto. Con el flag, el attach usa el config del
+  servidor y los popups funcionan.
+
+Sin ese flag, por `ssh vps` (el `.zshrc` del VPS hace `exec herdr`) los
+popups funcionan y el pegado de imagenes no: son dos modos distintos, con
+capacidades distintas.
+
+El alias `vps` es el del `~/.ssh/config` del cliente:
+
+```
+Host vps
+  HostName 100.105.245.93
+  User debian
+```
+
 ## Migración desde la era rig-install
 
 Las máquinas instaladas con rig-install tienen restos que prim detecta
