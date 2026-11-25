@@ -19,6 +19,7 @@ Es idempotente: correrla de nuevo no rompe nada. Instala:
 |---|---|---|
 | `glow` | `pkg install glow` | renderizador de Markdown para la terminal |
 | `miller` (`mlr`) | `pkg install miller` | procesador de CSV/TSV/JSON, con browser interactivo |
+| `chafa` | `pkg install chafa` | dibuja imagenes en la terminal con ANSI truecolor |
 | `qsv` | binario estatico musl aarch64 | toolkit de analisis de CSV, en Rust |
 
 `qsv` no existe como paquete de Termux, asi que el script baja el release
@@ -34,7 +35,7 @@ QSV_VERSION=<nueva> sh install-herramientas.sh
 | | glow | miller | duckdb | qsv | chafa |
 |---|---|---|---|---|---|
 | **VPS** (`rig/nix/modules/tools.nix`, perfil `vps`) | ✅ | ✅ | ✅ | — | ✅ |
-| **DC-1** (este script) | ✅ | ✅ | — | ✅ | disponible (`pkg install chafa`) |
+| **DC-1** (este script) | ✅ | ✅ | — | ✅ | ✅ |
 
 La razon del reparto es simple: **el visor va donde esta el archivo**.
 
@@ -47,10 +48,11 @@ La razon del reparto es simple: **el visor va donde esta el archivo**.
   y queres SQL local, es `python3` + `sqlite3` de la stdlib.
 - `qsv` si esta en el cliente: es el que te da las estadisticas de un CSV
   rapido, sin pensar SQL.
-- `chafa` esta en el VPS: es la que dibuja una imagen en la terminal con
-  ANSI truecolor, sin depender de que el terminal de afuera soporte el
-  protocolo grafico. En Termux tambien existe (`pkg install chafa`), pero
-  el archivo suele estar en el VPS: el visor va donde esta el archivo.
+- `chafa` esta en los dos lados: en el VPS y en el DC-1. Es la que dibuja
+  una imagen en la terminal con ANSI truecolor, sin depender de que el
+  terminal de afuera soporte el protocolo grafico. En el VPS queda porque
+  las imagenes del share estan ahi; en el telefono, para las fotos que
+  tenes en el dispositivo.
 
 Y si estas en el cliente y el CSV esta en el VPS, no copies nada (en el VPS
 estan `duckdb` y `miller`):
