@@ -37,20 +37,18 @@ const BACKUP_SUFFIX: &str = "prim-backup";
 /// Default profile when nothing names one (vps = minimal resting VPS).
 const DEFAULT_PROFILE: &str = "vps";
 
-/// How many home-manager generations stay in the profile: the current one
-/// plus a couple of previous (for `home-manager rollback`). Every
-/// activation creates new links, and every old link is a GC root that
-/// keeps its whole closure alive forever: without pruning, the store grows
-/// with each update and nothing is ever reclaimed.
-const KEEP_GENERATIONS: usize = 3;
-
-/// How many package-profile generations stay. The dotfiles generation is
-/// the one worth rolling back (the user's own files live there), so it
-/// keeps a margin. The package profile does not: an old user-environment
-/// holds the whole closure of the tools that were installed back then,
-/// which is how a package that already left the rig kept ~666 MB alive in
-/// the store. One generation is enough (it is the current one).
-const KEEP_PACKAGE_GENERATIONS: usize = 1;
+/// How many generations of each series stay in the profile.
+///
+/// The dotfiles generation used to keep a rollback margin (3), but that
+/// margin is what held the store hostage: every retained generation
+/// carries the package set of its time, so the two older ones kept
+/// yazi's whole closure (~666 MB with ffmpeg, x265 and resvg) alive long
+/// after the tool left the rig. And rolling back would not restore
+/// anything of the user's: those generations hold the RIG's version of
+/// the dotfiles, not the user's (prim snapshots and restores the user's
+/// files on every activation, which is the real safety net). So one
+/// generation per series: the current one.
+const KEEP_GENERATIONS: usize = 1;
 
 /// The link series that home-manager's switch creates in the profiles dir:
 /// `home-manager<N>-link` (the dotfiles generation) and `profile<N>-link`
@@ -59,7 +57,7 @@ const KEEP_PACKAGE_GENERATIONS: usize = 1;
 /// entries in the dir (channels, anything else) are not ours to touch.
 const GENERATION_SERIES: [(&str, usize); 2] = [
     ("home-manager", KEEP_GENERATIONS),
-    ("profile", KEEP_PACKAGE_GENERATIONS),
+    ("profile", KEEP_GENERATIONS),
 ];
 
 // --- PATH / env helpers ------------------------------------------------------
@@ -765,15 +763,14 @@ mod tests {
         }
     }
 
-    /// The keep policy per series: the dotfiles generation keeps a rollback
-    /// margin, the package profile keeps only the current one (an old
-    /// user-environment holds the closure of the tools of its time).
+    /// The keep policy per series: one generation of each, the current one.
+    /// A margin would look nice, but every retained generation carries the
+    /// package set of its time and keeps that closure alive in the store.
     #[test]
     fn generation_series_keep_counts() {
         assert_eq!(GENERATION_SERIES.len(), 2);
         assert_eq!(GENERATION_SERIES[0], ("home-manager", KEEP_GENERATIONS));
-        assert_eq!(GENERATION_SERIES[1], ("profile", KEEP_PACKAGE_GENERATIONS));
-        assert!(KEEP_GENERATIONS >= 2, "rollback margin for the dotfiles");
-        assert_eq!(KEEP_PACKAGE_GENERATIONS, 1, "solo la generacion actual");
+        assert_eq!(GENERATION_SERIES[1], ("profile", KEEP_GENERATIONS));
+        assert_eq!(KEEP_GENERATIONS, 1, "solo la generacion actual");
     }
 }
