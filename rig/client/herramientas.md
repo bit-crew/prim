@@ -142,9 +142,9 @@ cliente:
 ssh vps 'chafa ~/work/captura.png'
 ```
 
-Si la terminal del cliente soporta el protocolo kitty graphics (WezTerm y
-kitty y Ghostty lo hacen), `yazi ~/work/captura.png` la muestra en el
-preview, que se ve mejor que el render ANSI.
+Si la terminal del cliente soporta el protocolo kitty graphics (WezTerm,
+kitty y Ghostty lo hacen), `chafa --format kitty ~/work/captura.png` la
+dibuja con la fidelidad nativa del terminal, en vez del render ANSI.
 
 ## Nota: por que esto es un script y no el perfil `dc1`
 
