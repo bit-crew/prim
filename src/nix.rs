@@ -44,14 +44,23 @@ const DEFAULT_PROFILE: &str = "vps";
 /// with each update and nothing is ever reclaimed.
 const KEEP_GENERATIONS: usize = 3;
 
+/// How many package-profile generations stay. The dotfiles generation is
+/// the one worth rolling back (the user's own files live there), so it
+/// keeps a margin. The package profile does not: an old user-environment
+/// holds the whole closure of the tools that were installed back then,
+/// which is how a package that already left the rig kept ~666 MB alive in
+/// the store. One generation is enough (it is the current one).
+const KEEP_PACKAGE_GENERATIONS: usize = 1;
+
 /// The link series that home-manager's switch creates in the profiles dir:
 /// `home-manager<N>-link` (the dotfiles generation) and `profile<N>-link`
 /// (the package profile, the user-environment). BOTH are GC roots, and the
-/// old package profiles are what keep a removed tool's closure alive: the
-/// five older user-environments still carried yazi long after it left the
-/// rig, holding ~666 MB in the store. Other entries in the dir (channels,
-/// anything else) are not ours to touch.
-const GENERATION_SERIES: [&str; 2] = ["home-manager", "profile"];
+/// old package profiles are what keep a removed tool's closure alive. Other
+/// entries in the dir (channels, anything else) are not ours to touch.
+const GENERATION_SERIES: [(&str, usize); 2] = [
+    ("home-manager", KEEP_GENERATIONS),
+    ("profile", KEEP_PACKAGE_GENERATIONS),
+];
 
 // --- PATH / env helpers ------------------------------------------------------
 
@@ -219,7 +228,7 @@ pub fn activate(profile: &str) -> bool {
             let entries = dotfiles::merge(h, m, &snapshots);
             dotfiles::print_report(&entries);
         }
-        prune_generations(KEEP_GENERATIONS);
+        prune_generations();
     }
     ok
 }
@@ -277,15 +286,15 @@ fn links_to_prune(links: &[(u64, String)], keep: usize) -> Vec<String> {
 /// are symlinks into the store: removing them frees the generations to be
 /// collected (the store keeps them until a GC pass). The current link and
 /// the previous ones are kept, so `home-manager rollback` still works.
-fn prune_generations(keep: usize) {
+fn prune_generations() {
     let Some(dir) = profiles_dir() else {
         return;
     };
     let mut removed = 0;
     let mut kept = 0;
-    for series in GENERATION_SERIES {
+    for (series, series_keep) in GENERATION_SERIES {
         let links = generation_links(&dir, series);
-        let doomed = links_to_prune(&links, keep);
+        let doomed = links_to_prune(&links, series_keep);
         kept += links.len().saturating_sub(doomed.len());
         if doomed.is_empty() {
             continue;
@@ -740,9 +749,31 @@ mod tests {
                     "home-manager-2-link".to_string(),
                 ],
             ),
+            (
+                "keep one leaves only the current generation",
+                vec![
+                    (5, "profile-5-link".to_string()),
+                    (6, "profile-6-link".to_string()),
+                    (7, "profile-7-link".to_string()),
+                ],
+                1,
+                vec!["profile-5-link".to_string(), "profile-6-link".to_string()],
+            ),
         ];
         for (name, links, keep, expect) in scenarios {
             assert_eq!(links_to_prune(&links, keep), expect, "{name}");
         }
+    }
+
+    /// The keep policy per series: the dotfiles generation keeps a rollback
+    /// margin, the package profile keeps only the current one (an old
+    /// user-environment holds the closure of the tools of its time).
+    #[test]
+    fn generation_series_keep_counts() {
+        assert_eq!(GENERATION_SERIES.len(), 2);
+        assert_eq!(GENERATION_SERIES[0], ("home-manager", KEEP_GENERATIONS));
+        assert_eq!(GENERATION_SERIES[1], ("profile", KEEP_PACKAGE_GENERATIONS));
+        assert!(KEEP_GENERATIONS >= 2, "rollback margin for the dotfiles");
+        assert_eq!(KEEP_PACKAGE_GENERATIONS, 1, "solo la generacion actual");
     }
 }

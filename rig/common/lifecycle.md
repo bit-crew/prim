@@ -115,9 +115,12 @@ arrastrando los closures de las herramientas que ya no estan en el rig
 (los cinco mas viejos seguian con yazi, unos 666 MB en el store, mucho
 despues de que saliera del perfil).
 
-Por eso la activacion de prim deja **3 generaciones de cada serie** (la
-actual y dos anteriores, para `home-manager rollback`) y borra los links
-viejos. Es borrar un symlink al store, no borrar el store: las
+Por eso la activacion de prim deja **3 generaciones de dotfiles** (la
+actual y dos anteriores, para `home-manager rollback`) y **1 sola del
+perfil de paquetes**: un user-environment viejo ata el closure completo de
+las herramientas que estaban instaladas en su epoca, y eso es
+justamente lo que mantiene viva en el store una herramienta que ya salio
+del rig. Es borrar un symlink al store, no borrar el store: las
 generaciones quedan sin referencia y las libera el GC. Las entradas que no
 son de esas series (channels, etc.) no se tocan.
 
