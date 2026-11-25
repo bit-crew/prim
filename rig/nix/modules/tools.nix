@@ -34,7 +34,6 @@
     # terminal niceties
     eza
     delta
-    bat # the zsh `cat` alias is global, so bat is too
 
     # herdr is in nixpkgs (same upstream, herdr.dev; 0.9.5 == local
     # self-install). PATH order keeps the self-installed ~/.local/bin copy

@@ -19,7 +19,6 @@
     shellAliases = {
       lg = "lazygit";
       ls = "eza";
-      cat = "bat"; # bat itself is per-repo (not in the S2 global list)
       ".." = "cd ..";
       db = "lazysql"; # lazysql itself is per-repo (not in the S2 global list)
     };
