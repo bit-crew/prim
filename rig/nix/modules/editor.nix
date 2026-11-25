@@ -107,6 +107,12 @@ in
           ":redraw"
           ":reload-all"
         ];
+        # Vista del archivo con el visor que le toca: glow para markdown,
+        # jq para json, chafa para imagenes, mlr para csv. El comando sale
+        # en un POPUP y el buffer no se toca: Esc cierra el popup y seguís
+        # editando. prim-view devuelve texto plano (sin ANSI) porque helix no
+        # interpreta los escapes: con color se veria basura.
+        A-v = ":run-shell-command prim-view \"%{buffer_name}\"";
       };
     };
 
@@ -280,6 +286,14 @@ in
         "diff.minus" = { fg = "red"; };
       };
     };
+  };
+
+  # prim-view: el dispatcher de visores (glow/jq/chafa/mlr) que usa el
+  # binding Alt-v de helix. Vive en ~/.local/bin, en el PATH de la sesion,
+  # para que helix lo encuentre y tambien para usarlo desde la shell.
+  home.file.".local/bin/prim-view" = lib.mkIf (profile == "vps") {
+    source = "${../../vps}/prim-view";
+    executable = true;
   };
 
   programs.lazygit = {

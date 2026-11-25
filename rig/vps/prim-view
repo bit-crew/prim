@@ -1,0 +1,91 @@
+#!/bin/sh
+# prim-view - render a file with the viewer that fits its type, as PLAIN TEXT.
+#
+#   prim-view FILE
+#
+# Why plain text: the output is meant to be read inside a helix popup (the
+# A-v binding), and helix does not interpret ANSI escape sequences: colors
+# and OSC 8 hyperlinks would show up as literal garbage. So the escape
+# sequences are stripped and only the text survives.
+#
+# The viewer is picked by extension:
+#   md, markdown  -> glow   (markdown renderer)
+#   json          -> jq     (pretty printed)
+#   png, jpg...   -> chafa  (the image drawn with block characters)
+#   csv, tsv      -> mlr    (first rows; the full analysis is duckdb's job)
+#   anything else -> cat    (plain text)
+#
+# The same tools, with their colors, are the right thing in a terminal:
+#   glow file.md | less    jq . file.json | less    chafa file.png
+set -eu
+
+PROG=${0##*/}
+
+usage() {
+    cat <<EOF
+Usage: $PROG FILE
+
+Print FILE rendered by the viewer that fits its type, as plain text.
+EOF
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    "") usage >&2; exit 1 ;;
+esac
+
+FILE="$1"
+
+if [ ! -f "$FILE" ]; then
+    printf '%s: no such file: %s\n' "$PROG" "$FILE" >&2
+    exit 1
+fi
+
+# The escape sequences are stripped with sed and two bytes built with printf
+# (ESC and BEL), so the script does not depend on perl.
+esc=$(printf '\033')
+bel=$(printf '\007')
+strip() {
+    sed -e "s/${esc}\\][^${bel}${esc}]*${bel}//g" -e "s/${esc}\\[[0-9;]*[a-zA-Z]//g"
+}
+
+ext=$(printf '%s' "$FILE" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]')
+
+case "$ext" in
+    md | markdown)
+        if command -v glow >/dev/null 2>&1; then
+            glow "$FILE" | strip
+        else
+            cat "$FILE"
+        fi
+        ;;
+    json)
+        if command -v jq >/dev/null 2>&1; then
+            jq . "$FILE"
+        else
+            cat "$FILE"
+        fi
+        ;;
+    png | jpg | jpeg | gif | webp | bmp | tiff | tif | avif | qoi | xwd)
+        if command -v chafa >/dev/null 2>&1; then
+            # --colors none: the block characters survive, the colors would not.
+            chafa --colors none -f symbols "$FILE"
+        else
+            printf '%s: chafa no esta instalado; no se puede dibujar la imagen.\n' "$PROG" >&2
+            exit 1
+        fi
+        ;;
+    csv | tsv)
+        if command -v mlr >/dev/null 2>&1; then
+            case "$ext" in
+                tsv) mlr --itsv cat "$FILE" ;;
+                *) mlr --csv cat "$FILE" ;;
+            esac
+        else
+            cat "$FILE"
+        fi
+        ;;
+    *)
+        cat "$FILE"
+        ;;
+esac

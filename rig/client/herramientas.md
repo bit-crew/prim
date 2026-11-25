@@ -166,6 +166,14 @@ Si la terminal del cliente soporta el protocolo kitty graphics (WezTerm,
 kitty y Ghostty lo hacen), `chafa --format kitty ~/work/captura.png` la
 dibuja con la fidelidad nativa del terminal, en vez del render ANSI.
 
+## Vistas desde helix
+
+En el VPS, helix tiene una tecla para ver el archivo con su visor
+(`glow` para markdown, `jq` para json, `chafa` para imagenes, `mlr` para
+csv): **Alt-v** abre un popup con el archivo renderizado y Esc vuelve a la
+edicion. El dispatcher es `prim-view` y tambien sirve desde la shell. Ver
+`rig/vps/vistas.md`.
+
 ## Nota: por que esto es un script y no el perfil `dc1`
 
 El modulo `rig/nix/modules/termux.nix` lo dice: Termux vive en

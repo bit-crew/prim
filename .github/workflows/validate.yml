@@ -19,7 +19,7 @@ jobs:
           # components; rig/vps holds the host pieces (harden-vps, inbox
           # cleanup) and rig/client the client helpers (clipboard grab,
           # data viewers). All must stay shellcheck-clean.
-          shellcheck install.sh harness/install.sh files/install.sh files/sync-work.sh rig/vps/harden-vps.sh rig/vps/prim-inbox-cleanup rig/client/img-grab rig/client/install-img-grab.sh rig/client/install-herramientas.sh
+          shellcheck install.sh harness/install.sh files/install.sh files/sync-work.sh rig/vps/harden-vps.sh rig/vps/prim-inbox-cleanup rig/vps/prim-view rig/client/img-grab rig/client/install-img-grab.sh rig/client/install-herramientas.sh
 
   rust:
     runs-on: ubuntu-latest
