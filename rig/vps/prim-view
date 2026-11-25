@@ -13,7 +13,7 @@
 #   json          -> jq     (pretty printed)
 #   png, jpg...   -> chafa  (the image drawn with block characters)
 #   csv, tsv      -> mlr    (first rows; the full analysis is duckdb's job)
-#   anything else -> cat    (plain text)
+#   anything else -> no action (handled directly by helix)
 #
 # The same tools, with their colors, are the right thing in a terminal:
 #   glow file.md | less    jq . file.json | less    chafa file.png
@@ -56,14 +56,16 @@ case "$ext" in
         if command -v glow >/dev/null 2>&1; then
             glow "$FILE" | strip
         else
-            cat "$FILE"
+            printf '%s: glow no esta instalado\n' "$PROG" >&2
+            exit 1
         fi
         ;;
     json)
         if command -v jq >/dev/null 2>&1; then
             jq . "$FILE"
         else
-            cat "$FILE"
+            printf '%s: jq no esta instalado\n' "$PROG" >&2
+            exit 1
         fi
         ;;
     png | jpg | jpeg | gif | webp | bmp | tiff | tif | avif | qoi | xwd)
@@ -82,10 +84,12 @@ case "$ext" in
                 *) mlr --csv cat "$FILE" ;;
             esac
         else
-            cat "$FILE"
+            printf '%s: mlr (miller) no esta instalado\n' "$PROG" >&2
+            exit 1
         fi
         ;;
     *)
-        cat "$FILE"
+        printf '%s: tipo de archivo no requiere visor especial\n' "$PROG" >&2
+        exit 1
         ;;
 esac

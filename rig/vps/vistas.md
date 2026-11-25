@@ -20,7 +20,7 @@ A-v = ':run-shell-command prim-view "%{buffer_name}"'
 | `.json` | `jq` | el JSON indentado y validado |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`... | `chafa` | la imagen dibujada con bloques de caracteres |
 | `.csv`, `.tsv` | `mlr` | las filas del CSV |
-| cualquier otro | `cat` | el texto tal cual |
+| cualquier otro | - | sin popup (texto directo en Helix) |
 
 ## Por qué sin color
 
