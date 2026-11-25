@@ -91,5 +91,14 @@
     glow
     miller
     duckdb
+
+    # Images in the terminal. Yazi previews them natively when the OUTER
+    # terminal speaks the kitty graphics protocol (herdr passes it through
+    # and the client renders it: herdr's terminal.kitty_graphics is on by
+    # default). chafa is the universal fallback: it draws with ANSI
+    # truecolor, so it works in any terminal, over plain SSH, in a pipe and
+    # on the phone. Helix never renders images (its picture support was
+    # closed upstream), so this is the way to look at a PNG from the host.
+    chafa
   ];
 }

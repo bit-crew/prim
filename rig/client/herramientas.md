@@ -31,10 +31,10 @@ QSV_VERSION=<nueva> sh install-herramientas.sh
 
 ## Que hay en cada lado, y por que
 
-| | glow | miller | duckdb | qsv |
-|---|---|---|---|---|
-| **VPS** (`rig/nix/modules/tools.nix`, perfil `vps`) | ✅ | ✅ | ✅ | — |
-| **DC-1** (este script) | ✅ | ✅ | — | ✅ |
+| | glow | miller | duckdb | qsv | chafa |
+|---|---|---|---|---|---|
+| **VPS** (`rig/nix/modules/tools.nix`, perfil `vps`) | ✅ | ✅ | ✅ | — | ✅ |
+| **DC-1** (este script) | ✅ | ✅ | — | ✅ | disponible (`pkg install chafa`) |
 
 La razon del reparto es simple: **el visor va donde esta el archivo**.
 
@@ -47,6 +47,10 @@ La razon del reparto es simple: **el visor va donde esta el archivo**.
   y queres SQL local, es `python3` + `sqlite3` de la stdlib.
 - `qsv` si esta en el cliente: es el que te da las estadisticas de un CSV
   rapido, sin pensar SQL.
+- `chafa` esta en el VPS: es la que dibuja una imagen en la terminal con
+  ANSI truecolor, sin depender de que el terminal de afuera soporte el
+  protocolo grafico. En Termux tambien existe (`pkg install chafa`), pero
+  el archivo suele estar en el VPS: el visor va donde esta el archivo.
 
 Y si estas en el cliente y el CSV esta en el VPS, no copies nada (en el VPS
 estan `duckdb` y `miller`):
@@ -111,6 +115,34 @@ renderiza.
 duckdb -c ".mode markdown
 select categoria, count(*) n from 'datos.csv' group by 1" | glow -
 ```
+
+### `chafa` — ver imagenes (en el VPS)
+
+Helix no dibuja imagenes (el pedido upstream esta cerrado) y Yazi solo las
+muestra si el terminal de afuera habla el protocolo kitty graphics.
+`chafa` no depende de nada de eso: dibuja con ANSI truecolor, asi que se ve
+en cualquier terminal, por SSH pelado o en un pipe.
+
+```bash
+chafa foto.png                     # a stdout, con el tamano del terminal
+chafa --size 60x30 foto.png        # tamano fijo
+chafa -f symbols foto.png          # solo simbolos (ASCII, util por SSH)
+chafa --format kitty foto.png      # protocolo kitty, si el terminal lo banca
+chafa foto.png > foto.txt          # vuelca el render a un archivo
+```
+
+Formatos que lee: PNG, JPEG, GIF, WebP, SVG, TIFF, AVIF, JXL, QOI y XWD.
+
+La imagen tiene que estar en el VPS (o en el share), asi que desde el
+cliente:
+
+```bash
+ssh vps 'chafa ~/work/captura.png'
+```
+
+Si la terminal del cliente soporta el protocolo kitty graphics (WezTerm y
+kitty y Ghostty lo hacen), `yazi ~/work/captura.png` la muestra en el
+preview, que se ve mejor que el render ANSI.
 
 ## Nota: por que esto es un script y no el perfil `dc1`
 
