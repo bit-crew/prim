@@ -37,6 +37,13 @@ const BACKUP_SUFFIX: &str = "prim-backup";
 /// Default profile when nothing names one (vps = minimal resting VPS).
 const DEFAULT_PROFILE: &str = "vps";
 
+/// How many home-manager generations stay in the profile: the current one
+/// plus a couple of previous (for `home-manager rollback`). Every
+/// activation creates a new link, and every old link is a GC root that
+/// keeps its whole closure alive forever: without pruning, the store grows
+/// with each update and nothing is ever reclaimed.
+const KEEP_GENERATIONS: usize = 3;
+
 // --- PATH / env helpers ------------------------------------------------------
 
 /// Prepend ~/.nix-profile/bin to this process's PATH (idempotent): after a
@@ -203,8 +210,94 @@ pub fn activate(profile: &str) -> bool {
             let entries = dotfiles::merge(h, m, &snapshots);
             dotfiles::print_report(&entries);
         }
+        prune_generations(KEEP_GENERATIONS);
     }
     ok
+}
+
+/// The profile directory where home-manager keeps its generation links:
+/// `$NIX_STATE_DIR/profiles`, or `$HOME/.local/state/nix/profiles` (the
+/// default state dir).
+fn profiles_dir() -> Option<std::path::PathBuf> {
+    let state = std::env::var_os("NIX_STATE_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".local/state/nix")))?;
+    Some(state.join("profiles"))
+}
+
+/// The generation number of a profile link name, when it is one:
+/// `home-manager-7-link` is 7. Anything else is not a generation link.
+fn generation_number(name: &str) -> Option<u64> {
+    name.strip_prefix("home-manager-")
+        .and_then(|rest| rest.strip_suffix("-link"))
+        .and_then(|digits| digits.parse::<u64>().ok())
+}
+
+/// The generation links of the home-manager profile with their number,
+/// oldest first. Only `home-manager<N>-link` entries count: the profile
+/// itself (`home-manager`) is a symlink to the newest one.
+fn generation_links(dir: &Path) -> Vec<(u64, String)> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut links: Vec<(u64, String)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let number = generation_number(&name)?;
+            Some((number, name))
+        })
+        .collect();
+    links.sort_by_key(|(number, _)| *number);
+    links
+}
+
+/// The links to remove: every one but the `keep` most recent. Pure, so the
+/// policy is testable without touching the filesystem.
+fn links_to_prune(links: &[(u64, String)], keep: usize) -> Vec<String> {
+    let keep_from = links.len().saturating_sub(keep);
+    links[..keep_from]
+        .iter()
+        .map(|(_, name)| name.clone())
+        .collect()
+}
+
+/// Drop the old generation links after a successful activation. The links
+/// are symlinks into the store: removing them frees the generations to be
+/// collected (the store keeps them until a GC pass). The current link and
+/// the previous ones are kept, so `home-manager rollback` still works.
+fn prune_generations(keep: usize) {
+    let Some(dir) = profiles_dir() else {
+        return;
+    };
+    let links = generation_links(&dir);
+    let doomed = links_to_prune(&links, keep);
+    if doomed.is_empty() {
+        return;
+    }
+    if dry_run() {
+        println!(
+            "[prim] PRIM_DRY_RUN=1: no se ejecuta nada; se removerian {} generaciones viejas: {}",
+            doomed.len(),
+            doomed.join(", ")
+        );
+        return;
+    }
+    let mut removed = 0;
+    for name in doomed {
+        let path = dir.join(&name);
+        // A symlink into the store: removing it never touches the store.
+        match fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(e) => eprintln!("[prim] no se pudo remover {name}: {e}"),
+        }
+    }
+    if removed > 0 {
+        println!(
+            "[prim] generaciones: {removed} links viejos removidos (quedan {} para rollback).",
+            links.len().saturating_sub(removed)
+        );
+    }
 }
 
 /// Deactivate the rig: `home-manager uninstall`. The /nix store, the agent
@@ -567,6 +660,70 @@ mod tests {
         ];
         for (key, expect) in cases {
             assert_eq!(toml_field(text, key, "fallback"), expect, "{key}");
+        }
+    }
+
+    /// Which names are generation links: the numbered `home-manager<N>-link`
+    /// entries, and nothing else (the profile symlink itself, the store
+    /// paths and any other file in the profiles dir are ignored).
+    #[test]
+    fn generation_number_matrix() {
+        let cases = [
+            ("home-manager-1-link", Some(1)),
+            ("home-manager-11-link", Some(11)),
+            ("home-manager-100-link", Some(100)),
+            ("home-manager", None),
+            ("home-manager-1", None),
+            ("home-manager-x-link", None),
+            ("home-manager-1-link.bak", None),
+            ("other-1-link", None),
+        ];
+        for (name, expect) in cases {
+            assert_eq!(generation_number(name), expect, "{name}");
+        }
+    }
+
+    /// Pruning policy: every generation but the `keep` most recent is
+    /// removed. The table is the single source of truth.
+    #[test]
+    fn links_to_prune_keeps_the_newest() {
+        let scenarios: Vec<(&str, Vec<(u64, String)>, usize, Vec<String>)> = vec![
+            (
+                "nothing to prune when there are fewer links than the keep",
+                vec![
+                    (1, "home-manager-1-link".to_string()),
+                    (2, "home-manager-2-link".to_string()),
+                ],
+                3,
+                vec![],
+            ),
+            (
+                "the oldest ones go, the newest stay",
+                vec![
+                    (1, "home-manager-1-link".to_string()),
+                    (2, "home-manager-2-link".to_string()),
+                    (3, "home-manager-3-link".to_string()),
+                    (4, "home-manager-4-link".to_string()),
+                ],
+                3,
+                vec!["home-manager-1-link".to_string()],
+            ),
+            ("an empty profile prunes nothing", vec![], 3, vec![]),
+            (
+                "keep zero removes every generation",
+                vec![
+                    (1, "home-manager-1-link".to_string()),
+                    (2, "home-manager-2-link".to_string()),
+                ],
+                0,
+                vec![
+                    "home-manager-1-link".to_string(),
+                    "home-manager-2-link".to_string(),
+                ],
+            ),
+        ];
+        for (name, links, keep, expect) in scenarios {
+            assert_eq!(links_to_prune(&links, keep), expect, "{name}");
         }
     }
 }
