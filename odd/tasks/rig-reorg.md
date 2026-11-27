@@ -18,11 +18,11 @@ and give each bucket its own documentation. Behavior does not change.
 
 | ID | Spec | Route | Commit |
 |----|------|-------|--------|
-| R1 | S1 | Parent inline: git mv into rig/vps (harden-vps.sh, prim-inbox-cleanup + service + timer, docs vps-ovh/mosh/archivos-moviles), rig/client (img-grab, img-grab.ps1, imagenes.md), rig/common (lifecycle, entornos-repo, organizaciones, multi-cuenta, transferir-archivos) | pending |
-| R2 | S2 | Parent inline: delete rig/home/ (chezmoi retired, ported to nix modules in P2) + install-img-grab.sh + install-inbox-cleanup.sh (pre-Nix hand-install plane) | pending |
-| R3 | S1 | Parent inline: re-cable — systemd.nix and termux.nix imports, doc cross-references, TODO.md and harden-vps.sh path mentions | pending |
-| R4 | S1,S2 | Parent inline: verify — nix eval both profiles (home.file/systemd targets resolve), grep for stale rig/{docs,tools,systemd,host,home} references outside odd history | pending |
-| R5 | S3 | Parent inline: commit + push to main | pending |
+| R1 | S1 | Parent inline: git mv into rig/vps (harden-vps.sh, prim-inbox-cleanup + service + timer, docs vps-ovh/mosh/archivos-moviles), rig/client (img-grab, img-grab.ps1, imagenes.md), rig/common (lifecycle, entornos-repo, organizaciones, multi-cuenta, transferir-archivos) | done |
+| R2 | S2 | Parent inline: delete rig/home/ (chezmoi retired, ported to nix modules in P2) + install-img-grab.sh + install-inbox-cleanup.sh (pre-Nix hand-install plane) | done |
+| R3 | S1 | Parent inline: re-cable — systemd.nix and termux.nix imports, doc cross-references, TODO.md and harden-vps.sh path mentions | done |
+| R4 | S1,S2 | Parent inline: verify — nix eval both profiles (home.file/systemd targets resolve), grep for stale rig/{docs,tools,systemd,host,home} references outside odd history | done |
+| R5 | S3 | Parent inline: commit + push to main | done |
 
 Living docs get new paths; odd/* historical log entries keep their original
 wording (history). nix/ stays (it IS the environment); rig/install.sh stays
