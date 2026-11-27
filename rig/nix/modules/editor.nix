@@ -48,16 +48,13 @@ in
           max-indent-retain = 40;
           wrap-indicator = "\u21ba ";
         };
-        # Over SSH there is no X11/Wayland clipboard: we use a custom script
-        # (prim-copy) that ONLY sends the OSC 52 Write sequence. The native
-        # "termcode" provider tries to READ via OSC 52, causing clipboard loops.
+        # Over SSH there is no X11/Wayland clipboard: use OSC 52 so the local terminal
+        # receives the copied text. `y` / `p` use the system clipboard register (+).
+        # We restore this to termcode. To prevent clipboard loops (phantom typing),
+        # configure the local client to ONLY allow clipboard write, not read.
+        # (e.g. WezTerm: config.clipboard_control = { 'ClipboardWrite' })
         default-yank-register = "+";
-        clipboard-provider = {
-          custom = {
-            yank-command = "prim-copy";
-            paste-command = "cat"; # Paste from desktop via Ctrl+Shift+V
-          };
-        };
+        clipboard-provider = "termcode";
         # Dotfiles visible everywhere: file picker (space+f) and the file
         # explorer (space+e). The explorer option exists from helix 25.07 and
         # the rig always installs the most recent one (nixos-unstable), so it
@@ -301,11 +298,6 @@ in
 
   # prim-copy: envia texto al portapapeles del cliente via OSC 52 (solo escritura)
   # para evitar bucles de portapapeles al copiar desde helix.
-  home.file.".local/bin/prim-copy" = lib.mkIf (profile == "vps") {
-    source = "${../../vps}/prim-copy";
-    executable = true;
-  };
-
   # para que helix lo encuentre y tambien para usarlo desde la shell.
   home.file.".local/bin/prim-view" = lib.mkIf (profile == "vps") {
     source = "${../../vps}/prim-view";
