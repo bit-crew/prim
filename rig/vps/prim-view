@@ -78,8 +78,14 @@ case "$ext" in
         fi
         ;;
     csv | tsv)
-        if command -v mlr >/dev/null 2>&1; then
-            # `--opprint` format output as a pretty-printed aligned table
+        if command -v mlr >/dev/null 2>&1 && command -v glow >/dev/null 2>&1; then
+            # Convert CSV to Markdown with miller and render it beautifully with glow
+            case "$ext" in
+                tsv) mlr --itsv --omd cat "$FILE" | glow - | strip ;;
+                *) mlr --icsv --omd cat "$FILE" | glow - | strip ;;
+            esac
+        elif command -v mlr >/dev/null 2>&1; then
+            # Fallback if glow is missing
             case "$ext" in
                 tsv) mlr --itsv --opprint cat "$FILE" ;;
                 *) mlr --icsv --opprint cat "$FILE" ;;
