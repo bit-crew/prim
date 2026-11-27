@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/bit-crew/prim/main/rig/client/install-herramientas.sh | sh
 #
 # What it does:
-#   1. installs the Termux packages glow, miller (binary: mlr) and chafa
+#   1. installs the Termux package miller (binary: mlr)
 #   2. installs the static qsv binary into ~/.local/bin
 #   3. prints how to try them
 #
@@ -39,7 +39,7 @@ usage() {
     cat <<EOF
 Usage: $PROG
 
-Installs glow, miller (mlr), chafa and qsv on this Termux client. Safe to run
+Installs miller (mlr) and qsv on this Termux client. Safe to run
 more than once.
 
 Environment:
@@ -88,9 +88,7 @@ install_pkg() {
     pkg install -y "$package"
 }
 
-install_pkg glow glow
 install_pkg miller mlr
-install_pkg chafa chafa
 
 if ! have unzip; then
     log "installing unzip (pkg)"
@@ -135,9 +133,7 @@ verify() {
     fi
 }
 
-verify glow glow --version
 verify miller mlr --version
-verify chafa chafa --version
 verify qsv "$BIN_DIR/qsv" --version
 
 # ---- how to try it ---------------------------------------------------------
@@ -146,14 +142,10 @@ cat <<EOF
 
 Listo. Probalo asi:
 
-  glow README.md                 # markdown renderizado en la terminal
-  glow -p -w 120 docs/guia.md    # modo pager, ancho 120 (las tablas se cortan)
   mlr --csv head -n 5 datos.csv  # primeras filas
   mlr browse datos.csv           # browser interactivo del CSV
   qsv stats datos.csv            # estadisticas por columna
   qsv frequency datos.csv -c categoria
-  chafa foto.png                 # la imagen dibujada en la terminal
-  chafa -f symbols foto.png      # solo simbolos (util si el terminal es simple)
 
 Los CSV que subis desde el telefono al share quedan en ~/work del VPS, asi
 que tambien podes mirarlos desde alla, sin copias:

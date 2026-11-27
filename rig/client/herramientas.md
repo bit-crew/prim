@@ -32,10 +32,10 @@ QSV_VERSION=<nueva> sh install-herramientas.sh
 
 ## Que hay en cada lado, y por que
 
-| | glow | miller | duckdb | qsv | chafa |
-|---|---|---|---|---|---|
-| **VPS** (`rig/nix/modules/tools.nix`, perfil `vps`) | ✅ | ✅ | ✅ | — | ✅ |
-| **DC-1** (este script) | ✅ | ✅ | — | ✅ | ✅ |
+| | miller | duckdb | qsv | chafa |
+|---|---|---|---|---|
+| **VPS** (`rig/nix/modules/tools.nix`, perfil `vps`) | ✅ | ✅ | — | ✅ |
+| **DC-1** (este script) | ✅ | — | ✅ | disponible (`pkg install chafa`) |
 
 La razon del reparto es simple: **el visor va donde esta el archivo**.
 

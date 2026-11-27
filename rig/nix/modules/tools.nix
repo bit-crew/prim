@@ -76,27 +76,11 @@
     bacon
     go
 
-    # Viewers for the data that lives here. ~/work is the SMB share, so the
-    # CSVs and the markdown people drop from their phones land on this
-    # host. The tools that read them belong here too: the render happens on
-    # the VPS and the client only receives ANSI over SSH/Mosh, which is
-    # why they work from any device on the tailnet.
-    #   glow    - markdown renderer for the terminal
-    #   miller  - CSV/TSV/JSON processor (mlr), with an interactive browser
-    #   duckdb  - SQL over CSV/Parquet/JSON without importing anything
-    # The DC-1 client installs its own copies (it also gets qsv, which is
-    # not needed here); see rig/client/herramientas.md.
-    glow
-    miller
+    # Motor SQL analítico de consola (consultas sobre CSV/Parquet).
     duckdb
 
-    # Images in the terminal. chafa draws them with ANSI truecolor, so it
-    # works in any terminal, over plain SSH, in a pipe and on the phone;
-    # and with --format kitty it emits the kitty graphics protocol ITSELF,
-    # for the terminals that render it natively (herdr passes it through:
-    # its terminal.kitty_graphics is on by default). Helix never renders
-    # images (its picture support was closed upstream), so this is the way
-    # to look at a PNG from the host.
+    # Imágenes en la terminal: chafa las dibuja con ANSI truecolor, sirviendo de
+    # fallback universal (incluso por SSH). Helix no renderiza imágenes.
     chafa
   ];
 }

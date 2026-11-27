@@ -16,25 +16,22 @@ A-v = ':run-shell-command prim-view "%{buffer_name}"'
 
 | Archivo | Visor | Cómo se ve |
 |---|---|---|
-| `.md`, `.markdown` | `glow` | el markdown renderizado (tablas alineadas, títulos) |
 | `.json` | `jq` | el JSON indentado y validado |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`... | `chafa` | la imagen dibujada con bloques de caracteres |
-| `.csv`, `.tsv` | `mlr` + `glow` | las filas del CSV **alineadas como tabla Markdown** |
+| `.csv`, `.tsv` | `mlr` | las filas del CSV **alineadas como tabla** (`--opprint --barred`) |
 | cualquier otro | - | sin popup (texto directo en Helix) |
 
 ## Por qué sin color
 
 `prim-view` devuelve **texto plano**: quita los escapes ANSI de la salida
-(glow emite colores SGR y hyperlinks OSC 8) porque **helix no interpreta
-ANSI**: en el popup se vería la ESC y el código `[38;2;254;254;254m` como
-texto literal. El layout se conserva, el color no.
+porque **helix no interpreta ANSI**: en el popup se vería la ESC y el 
+código `[38;2;254;254;254m` como texto literal. El layout se conserva, el color no.
 
 Para ver una imagen **con color**, hay que salir a la shell, que es donde
 el terminal sí interpreta los escapes:
 
 ```bash
 chafa ~/work/captura.png          # con color
-glow ~/work/prim/README.md | less # con color
 ```
 
 ## El dispatcher: `prim-view`
@@ -59,7 +56,6 @@ prim-view notas.md | grep -i error
 
 - **Imágenes con color dentro del editor**: helix no tiene soporte de
   protocolo gráfico. El popup muestra la imagen en bloques, sin color.
-- **Markdown con color**: mismo motivo. `glow` en la shell sí.
 - **Navegar el CSV**: el popup muestra las filas, pero el análisis real
   (agregar, agrupar, joins) es de `duckdb`/`mlr`, que son de shell.
 

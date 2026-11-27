@@ -9,14 +9,14 @@
 # sequences are stripped and only the text survives.
 #
 # The viewer is picked by extension:
-#   md, markdown  -> glow   (markdown renderer)
+#   md, markdown  -> no action (handled directly by helix)
 #   json          -> jq     (pretty printed)
 #   png, jpg...   -> chafa  (the image drawn with block characters)
 #   csv, tsv      -> mlr    (first rows; the full analysis is duckdb's job)
 #   anything else -> no action (handled directly by helix)
 #
 # The same tools, with their colors, are the right thing in a terminal:
-#   glow file.md | less    jq . file.json | less    chafa file.png
+#   jq . file.json | less    chafa file.png
 set -eu
 
 PROG=${0##*/}
@@ -52,14 +52,6 @@ strip() {
 ext=$(printf '%s' "$FILE" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]')
 
 case "$ext" in
-    md | markdown)
-        if command -v glow >/dev/null 2>&1; then
-            glow "$FILE" | strip
-        else
-            printf '%s: glow no esta instalado\n' "$PROG" >&2
-            exit 1
-        fi
-        ;;
     json)
         if command -v jq >/dev/null 2>&1; then
             jq . "$FILE"
@@ -78,17 +70,11 @@ case "$ext" in
         fi
         ;;
     csv | tsv)
-        if command -v mlr >/dev/null 2>&1 && command -v glow >/dev/null 2>&1; then
-            # Convert CSV to Markdown with miller and render it beautifully with glow
+        if command -v mlr >/dev/null 2>&1; then
+            # Format output as a pretty-printed aligned table with basic ascii borders
             case "$ext" in
-                tsv) mlr --itsv --omd cat "$FILE" | glow - | strip ;;
-                *) mlr --icsv --omd cat "$FILE" | glow - | strip ;;
-            esac
-        elif command -v mlr >/dev/null 2>&1; then
-            # Fallback if glow is missing
-            case "$ext" in
-                tsv) mlr --itsv --opprint cat "$FILE" ;;
-                *) mlr --icsv --opprint cat "$FILE" ;;
+                tsv) mlr --itsv --opprint --barred cat "$FILE" ;;
+                *) mlr --icsv --opprint --barred cat "$FILE" ;;
             esac
         else
             printf '%s: mlr (miller) no esta instalado\n' "$PROG" >&2
