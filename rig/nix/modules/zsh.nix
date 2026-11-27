@@ -33,6 +33,11 @@
         ""|dumb|unknown) export TERM=xterm-256color ;;
       esac
       export COLORTERM=truecolor
+
+      # El script de entorno de Nix debe cargarse ANTES que los hooks de prompt,
+      # para que ~/.nix-profile/bin ingrese al PATH y zsh pueda encontrar los binarios.
+      if [ -e /home/debian/.nix-profile/etc/profile.d/nix.sh ]; then . /home/debian/.nix-profile/etc/profile.d/nix.sh; fi
+
       # hash -r: la hash table de zsh guarda la ruta absoluta de cada comando ya
       # ejecutado. Si ese binario desaparece (toolchain viejo desinstalado, binario
       # movido al perfil de nix), zsh sigue invocando la ruta vieja y falla con
@@ -64,13 +69,13 @@
     ];
   };
 
-  home.sessionPath = [
+    home.sessionPath = [
     # Same precedence as the chezmoi template: self-installed binaries win,
     # nix profile last as a fallback for fresh machines.
     "$HOME/.local/bin"
     "$HOME/.local/node/bin"
     "$HOME/go/bin"
-    "$HOME/.nix-profile/bin"
+    # Nix prepends its profile path via /etc/profile.d/nix.sh
   ];
 
   home.sessionVariables = {
