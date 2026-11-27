@@ -36,6 +36,10 @@
       # image. On desktop terminals (Ghostty, kitty, WezTerm) the image key
       # is CTRL+SHIFT+G because there CTRL+V is the text paste.
       extra-keys = CTRL+V,~/.local/bin/img-grab\n
+
+      # Allow the VPS to write to the clipboard (e.g. Helix yank), but block 
+      # reading (Read requests bounce back as keystrokes, causing infinite loops).
+      allow-osc52 = write
     '';
   };
 }
