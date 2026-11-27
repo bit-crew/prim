@@ -1,0 +1,10 @@
+#!/bin/sh
+# prim-copy - A safe OSC 52 Write-Only provider for Helix
+#
+# Some terminal emulators reflect OSC 52 Read requests back to standard input,
+# causing infinite clipboard loops (phantom typing) over SSH/remote attaches.
+# This script takes stdin, packs it in base64, and spits out the OSC 52 Write
+# sequence. Used as a custom yank-command in Helix.
+
+buf=$(cat | base64 | tr -d '\n')
+printf "\033]52;c;%s\007" "$buf"
