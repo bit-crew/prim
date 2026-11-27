@@ -19,7 +19,7 @@ A-v = ':run-shell-command prim-view "%{buffer_name}"'
 | `.md`, `.markdown` | `glow` | el markdown renderizado (tablas alineadas, títulos) |
 | `.json` | `jq` | el JSON indentado y validado |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`... | `chafa` | la imagen dibujada con bloques de caracteres |
-| `.csv`, `.tsv` | `mlr` | las filas del CSV |
+| `.csv`, `.tsv` | `mlr` | las filas del CSV **alineadas como tabla** (`--opprint`) |
 | cualquier otro | - | sin popup (texto directo en Helix) |
 
 ## Por qué sin color
@@ -44,7 +44,7 @@ desde la shell:
 
 ```bash
 prim-view ~/work/prim/README.md   # markdown renderizado, texto plano
-prim-view ~/work/datos.csv         # las filas del CSV
+prim-view ~/work/datos.csv         # el CSV formateado como tabla alineada
 prim-view captura.png              # la imagen en bloques
 ```
 

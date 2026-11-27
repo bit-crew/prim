@@ -79,9 +79,10 @@ case "$ext" in
         ;;
     csv | tsv)
         if command -v mlr >/dev/null 2>&1; then
+            # `--opprint` format output as a pretty-printed aligned table
             case "$ext" in
-                tsv) mlr --itsv cat "$FILE" ;;
-                *) mlr --csv cat "$FILE" ;;
+                tsv) mlr --itsv --opprint cat "$FILE" ;;
+                *) mlr --icsv --opprint cat "$FILE" ;;
             esac
         else
             printf '%s: mlr (miller) no esta instalado\n' "$PROG" >&2
